@@ -2,6 +2,12 @@
    PyCode — VS Code Dark Theme
    ============================================================ */
 
+/* Font imports */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* xterm.js styles */
+@import '@xterm/xterm/css/xterm.css';
+
 /* --- CSS Variables / Design Tokens --- */
 :root {
   /* Background layers */
