@@ -15,29 +15,29 @@
 PyCode — Sample Project
 Run this with F5 or the ▶ Run button!
 """
-from utils import greet, fibonacci
+from lib.mathutils import fibonacci, factorial
 
 def main():
-    name = "World"
-    print(greet(name))
+    print("PyCode Sample Project 🐍")
+    print("=" * 30)
     print()
-
     print("Fibonacci sequence (first 10):")
     for i in range(10):
         print(f"  fib({i}) = {fibonacci(i)}")
     print()
-
-    print("Python is running in your browser! 🐍")
+    print("Factorials:")
+    for n in [5, 8, 10]:
+        print(f"  {n}! = {factorial(n)}")
+    print()
+    print("Python is running in your browser!")
     print("Powered by Pyodide (CPython compiled to WebAssembly)")
 
 if __name__ == "__main__":
     main()
 `,
-      'utils.py': `"""Utility functions for the sample project."""
-
-def greet(name: str) -> str:
-    """Return a friendly greeting."""
-    return f"Hello, {name}! Welcome to PyCode."
+      'lib/__init__.py': `"""Shared library for the sample project."""
+`,
+      'lib/mathutils.py': `"""Math utility functions."""
 
 def fibonacci(n: int) -> int:
     """Calculate the nth Fibonacci number."""
@@ -58,26 +58,88 @@ def factorial(n: int) -> int:
     for i in range(2, n + 1):
         result *= i
     return result
+
+def greet(name: str) -> str:
+    """Return a friendly greeting."""
+    return f"Hello, {name}! Welcome to PyCode."
 `,
-      'README.md': `# PyCode Sample Project
+      'lib/BUILD.bazel': `py_library(
+    name = "mathutils",
+    srcs = ["mathutils.py"],
+    visibility = ["//visibility:public"],
+)
+`,
+      'app/BUILD.bazel': `py_binary(
+    name = "app",
+    srcs = ["main.py"],
+    main = "main.py",
+    deps = ["//lib:mathutils"],
+)
+`,
+      'app/main.py': `"""Application entry point — run with: bazel run //app:app"""
+from mathutils import greet, fibonacci
 
-This is a sample Python project to demonstrate the **PyCode** browser IDE.
+def main():
+    print(greet("World"))
+    print()
+    print("First 5 Fibonacci numbers:")
+    for i in range(5):
+        print(f"  fib({i}) = {fibonacci(i)}")
 
-## Features
-- Full Python 3 environment in the browser
-- Monaco Editor with syntax highlighting
-- Terminal with output display
-- File explorer with virtual filesystem
+if __name__ == "__main__":
+    main()
+`,
+      'tests/BUILD.bazel': `py_test(
+    name = "test_mathutils",
+    srcs = ["test_mathutils.py"],
+    deps = ["//lib:mathutils"],
+)
+`,
+      'tests/test_mathutils.py': `"""Tests for mathutils — run with: bazel test //tests:test_mathutils"""
+from mathutils import fibonacci, factorial, greet
 
-## Getting Started
-1. Click on \`main.py\` in the explorer
-2. Press **F5** or click **▶ Run** to execute
-3. View the output in the terminal below
+# Test fibonacci
+assert fibonacci(0) == 0, "fib(0) should be 0"
+assert fibonacci(1) == 1, "fib(1) should be 1"
+assert fibonacci(10) == 55, "fib(10) should be 55"
+print("✓ fibonacci tests passed")
 
-## Try It
-- Edit the code and run again
-- Create new files with the + button
-- Install packages via the Packages panel
+# Test factorial
+assert factorial(0) == 1, "0! should be 1"
+assert factorial(5) == 120, "5! should be 120"
+assert factorial(10) == 3628800, "10! should be 3628800"
+print("✓ factorial tests passed")
+
+# Test greet
+result = greet("PyCode")
+assert "PyCode" in result, f"Greeting should contain name, got: {result}"
+print("✓ greet tests passed")
+
+print()
+print("All tests passed! ✅")
+`,
+      'pyproject.toml': `[project]
+name = "pycode-sample"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest", "pytest-cov"]
+`,
+            'README.md': `# PyCode Sample Project
+
+Press **F5** or click **Run** to execute main.py.
+
+## Terminal Commands
+
+uv sync                            # Install dependencies
+uv run main.py                     # Run a file
+bazel query //...                  # List build targets
+bazel run //app:app                # Run the app
+bazel test //tests:test_mathutils  # Run tests
+git status                         # Show changes
+git clone <url>                    # Clone a repo
 `,
       'data/config.json': `{
   "project": "PyCode Sample",
@@ -286,7 +348,7 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
             fontSize: 14,
             lineHeight: 22,
             tabSize: 4,
-            minimap: { enabled: true, scale: 1 },
+            minimap: { enabled: false, scale: 1 },
             scrollBeyondLastLine: true,
             smoothScrolling: true,
             cursorBlinking: 'smooth',
@@ -924,6 +986,9 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
       termWrite('  \x1b[36muv run \x1b[90m<file>\x1b[0m       Run a Python file\r\n');
       termWrite('  \x1b[36muv run --package \x1b[90m<pkg> <cmd>\x1b[0m  Run entrypoint\r\n');
       termWrite('  \x1b[36muv pip install \x1b[90m<pkg>\x1b[0m  Install package\r\n');
+      termWrite('  \x1b[36mbazel query \x1b[90m//...\x1b[0m     List all targets\r\n');
+      termWrite('  \x1b[36mbazel run \x1b[90m//pkg:tgt\x1b[0m   Run a py_binary\r\n');
+      termWrite('  \x1b[36mbazel test \x1b[90m//pkg:tgt\x1b[0m  Run a py_test\r\n');
       termWrite('  \x1b[36mclear\x1b[0m              Clear terminal\r\n');
       termWrite('  \x1b[36mhelp\x1b[0m               Show this help\r\n');
       termWrite('\r\n');
@@ -991,6 +1056,12 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
     // UV commands
     if (cmd.startsWith('uv ')) {
       handleUvCommand(cmd);
+      return;
+    }
+
+    // Bazel commands
+    if (cmd.startsWith('bazel ')) {
+      handleBazelCommand(cmd);
       return;
     }
 
@@ -1344,6 +1415,288 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
       }
     } catch (err) {
       termWrite(`\x1b[31muv error: ${err.message}\x1b[0m\r\n`);
+    }
+    termWritePrompt();
+  }
+
+  // ─── Bazel BUILD Parser ──────────────────────────────────
+  // Extracts py_binary, py_library, py_test targets from BUILD.bazel files.
+  function parseBUILD(text) {
+    const targets = [];
+    const rulePattern = /(py_binary|py_library|py_test)\s*\(/g;
+    let match;
+
+    while ((match = rulePattern.exec(text)) !== null) {
+      const rule = match[1];
+      const startIdx = match.index + match[0].length;
+
+      // Find matching closing paren
+      let depth = 1;
+      let pos = startIdx;
+      while (pos < text.length && depth > 0) {
+        if (text[pos] === '(') depth++;
+        else if (text[pos] === ')') depth--;
+        pos++;
+      }
+      const body = text.slice(startIdx, pos - 1);
+
+      // Extract named arguments from the body
+      const target = { rule };
+      target.name = extractBazelArg(body, 'name');
+      target.srcs = extractBazelListArg(body, 'srcs');
+      target.main = extractBazelArg(body, 'main');
+      target.deps = extractBazelListArg(body, 'deps');
+      target.imports = extractBazelListArg(body, 'imports');
+
+      if (target.name) targets.push(target);
+    }
+    return targets;
+  }
+
+  function extractBazelArg(body, argName) {
+    // Match: argName = "value" or argName = 'value'
+    const re = new RegExp(argName + '\\s*=\\s*["\']([^"\']*)["\']');
+    const m = body.match(re);
+    return m ? m[1] : null;
+  }
+
+  function extractBazelListArg(body, argName) {
+    // Match: argName = ["a", "b", ...]
+    const re = new RegExp(argName + '\\s*=\\s*\\[([^\\]]*?)\\]', 's');
+    const m = body.match(re);
+    if (!m) return [];
+    const items = [];
+    const itemRe = /["']([^"']*)["']/g;
+    let im;
+    while ((im = itemRe.exec(m[1])) !== null) {
+      items.push(im[1]);
+    }
+    return items;
+  }
+
+  // ─── Bazel Target Resolution ─────────────────────────────
+  function findAllBUILDFiles() {
+    const results = {};
+    for (const [path, entry] of vfs.entries()) {
+      if (entry.type === 'file' && (path.endsWith('/BUILD') || path.endsWith('/BUILD.bazel') || path === 'BUILD' || path === 'BUILD.bazel')) {
+        results[path] = { content: entry.content, targets: parseBUILD(entry.content) };
+      }
+    }
+    return results;
+  }
+
+  function buildFilePkg(buildPath) {
+    // Convert BUILD file path to package path
+    // e.g. "app/BUILD.bazel" -> "app", "BUILD.bazel" -> ""
+    const dir = buildPath.replace(/\/?BUILD(\.bazel)?$/, '');
+    return dir;
+  }
+
+  function resolveBazelTarget(label) {
+    // Parse //pkg:name or //:name or :name
+    let pkg = '';
+    let name = '';
+    if (label.startsWith('//')) {
+      const rest = label.slice(2);
+      const colonIdx = rest.indexOf(':');
+      if (colonIdx !== -1) {
+        pkg = rest.slice(0, colonIdx);
+        name = rest.slice(colonIdx + 1);
+      } else {
+        pkg = rest;
+        name = rest.split('/').pop(); // default target = last component
+      }
+    } else if (label.startsWith(':')) {
+      name = label.slice(1);
+    } else {
+      name = label;
+    }
+
+    const buildFiles = findAllBUILDFiles();
+
+    // Find the BUILD file for this package
+    for (const [buildPath, buildData] of Object.entries(buildFiles)) {
+      const filePkg = buildFilePkg(buildPath);
+      if (filePkg === pkg) {
+        const target = buildData.targets.find(t => t.name === name);
+        if (target) {
+          return { target, pkg: filePkg, buildPath };
+        }
+      }
+    }
+    return null;
+  }
+
+  function collectBazelDeps(target, pkg, visited = new Set()) {
+    // Collect source directories for sys.path from transitive deps
+    const paths = new Set();
+    if (pkg) paths.add('/' + pkg);
+
+    for (const dep of (target.deps || [])) {
+      if (visited.has(dep)) continue;
+      visited.add(dep);
+
+      const resolved = resolveBazelTarget(dep);
+      if (resolved) {
+        if (resolved.pkg) paths.add('/' + resolved.pkg);
+        // Recurse into deps
+        const subPaths = collectBazelDeps(resolved.target, resolved.pkg, visited);
+        for (const p of subPaths) paths.add(p);
+      }
+    }
+    return Array.from(paths);
+  }
+
+  // ─── Bazel Commands ─────────────────────────────────────
+  async function handleBazelCommand(cmd) {
+    const parts = cmd.split(/\s+/);
+    const subCmd = parts[1];
+
+    try {
+      switch (subCmd) {
+        case 'query': {
+          const pattern = parts.slice(2).join(' ').trim() || '//...';
+          const buildFiles = findAllBUILDFiles();
+          let totalTargets = 0;
+
+          termWrite(`\x1b[36mQuerying targets matching ${pattern}\x1b[0m\r\n`);
+
+          for (const [buildPath, buildData] of Object.entries(buildFiles)) {
+            const pkg = buildFilePkg(buildPath);
+            for (const target of buildData.targets) {
+              const label = `//${pkg}:${target.name}`;
+              const ruleColor = target.rule === 'py_binary' ? '32' :
+                               target.rule === 'py_test' ? '33' : '36';
+              termWrite(`\x1b[${ruleColor}m${target.rule}\x1b[0m ${label}\r\n`);
+              totalTargets++;
+            }
+          }
+
+          if (totalTargets === 0) {
+            termWrite('\x1b[90mNo BUILD files or py_* targets found\x1b[0m\r\n');
+          } else {
+            termWrite(`\x1b[90m${totalTargets} target(s) found\x1b[0m\r\n`);
+          }
+          break;
+        }
+
+        case 'run': {
+          const label = parts[2];
+          if (!label) {
+            termWrite('\x1b[33mUsage: bazel run //package:target\x1b[0m\r\n');
+            break;
+          }
+
+          const resolved = resolveBazelTarget(label);
+          if (!resolved) {
+            termWrite(`\x1b[31mTarget not found: ${label}\x1b[0m\r\n`);
+            break;
+          }
+
+          const { target, pkg } = resolved;
+          if (target.rule !== 'py_binary') {
+            termWrite(`\x1b[33m${label} is a ${target.rule}, not a py_binary. Use 'bazel test' for py_test targets.\x1b[0m\r\n`);
+            break;
+          }
+
+          // Resolve main file
+          const mainFile = target.main || (target.srcs && target.srcs[0]);
+          if (!mainFile) {
+            termWrite(`\x1b[31mNo main file found for ${label}\x1b[0m\r\n`);
+            break;
+          }
+
+          const fullPath = pkg ? `${pkg}/${mainFile}` : mainFile;
+
+          // Collect dep paths for sys.path
+          const depPaths = collectBazelDeps(target, pkg);
+          if (depPaths.length > 0) {
+            syncFSToWorker();
+            pyWorker.postMessage({ type: 'configurePaths', data: { paths: depPaths } });
+            // Brief wait for paths to configure
+            await new Promise(r => setTimeout(r, 200));
+          }
+
+          termWrite(`\x1b[90m$ bazel run ${label}\x1b[0m\r\n`);
+          termWrite(`\x1b[90m  → ${fullPath}\x1b[0m\r\n`);
+          runPython(fullPath);
+          return; // runPython handles prompt
+        }
+
+        case 'test': {
+          const label = parts[2];
+          if (!label) {
+            termWrite('\x1b[33mUsage: bazel test //package:target\x1b[0m\r\n');
+            break;
+          }
+
+          const resolved = resolveBazelTarget(label);
+          if (!resolved) {
+            termWrite(`\x1b[31mTarget not found: ${label}\x1b[0m\r\n`);
+            break;
+          }
+
+          const { target, pkg } = resolved;
+          if (target.rule !== 'py_test') {
+            termWrite(`\x1b[33m${label} is a ${target.rule}, not a py_test. Use 'bazel run' for py_binary targets.\x1b[0m\r\n`);
+            break;
+          }
+
+          const testFile = target.main || (target.srcs && target.srcs[0]);
+          if (!testFile) {
+            termWrite(`\x1b[31mNo test file found for ${label}\x1b[0m\r\n`);
+            break;
+          }
+
+          const fullPath = pkg ? `${pkg}/${testFile}` : testFile;
+
+          // Collect dep paths
+          const depPaths = collectBazelDeps(target, pkg);
+          if (depPaths.length > 0) {
+            syncFSToWorker();
+            pyWorker.postMessage({ type: 'configurePaths', data: { paths: depPaths } });
+            await new Promise(r => setTimeout(r, 200));
+          }
+
+          termWrite(`\x1b[90m$ bazel test ${label}\x1b[0m\r\n`);
+          termWrite(`\x1b[90m  → ${fullPath}\x1b[0m\r\n`);
+          runPython(fullPath);
+          return; // runPython handles prompt
+        }
+
+        case 'build': {
+          const label = parts[2];
+          if (!label) {
+            termWrite('\x1b[33mUsage: bazel build //package:target\x1b[0m\r\n');
+            break;
+          }
+
+          const resolved = resolveBazelTarget(label);
+          if (!resolved) {
+            termWrite(`\x1b[31mTarget not found: ${label}\x1b[0m\r\n`);
+            break;
+          }
+
+          const { target, pkg } = resolved;
+          const depPaths = collectBazelDeps(target, pkg);
+
+          termWrite(`\x1b[32m✓ ${label} (${target.rule})\x1b[0m\r\n`);
+          if (target.srcs && target.srcs.length > 0) {
+            termWrite(`\x1b[90m  srcs: ${target.srcs.join(', ')}\x1b[0m\r\n`);
+          }
+          if (target.deps && target.deps.length > 0) {
+            termWrite(`\x1b[90m  deps: ${target.deps.join(', ')}\x1b[0m\r\n`);
+          }
+          termWrite('\x1b[32mBuild completed successfully\x1b[0m\r\n');
+          break;
+        }
+
+        default:
+          termWrite(`\x1b[33mUnknown bazel command: ${subCmd}\x1b[0m\r\n`);
+          termWrite('\x1b[90mAvailable: query, run, test, build\x1b[0m\r\n');
+      }
+    } catch (err) {
+      termWrite(`\x1b[31mBazel error: ${err.message}\x1b[0m\r\n`);
     }
     termWritePrompt();
   }
