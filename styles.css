@@ -1,0 +1,1288 @@
+/* ============================================================
+   PyCode — VS Code Dark Theme
+   ============================================================ */
+
+/* --- CSS Variables / Design Tokens --- */
+:root {
+  /* Background layers */
+  --bg-titlebar: #1f1f1f;
+  --bg-activity: #181818;
+  --bg-sidebar: #1e1e1e;
+  --bg-editor: #1e1e1e;
+  --bg-panel: #1e1e1e;
+  --bg-statusbar: #007acc;
+  --bg-input: #313131;
+  --bg-tab: #2d2d2d;
+  --bg-tab-active: #1e1e1e;
+  --bg-hover: #2a2d2e;
+  --bg-selection: #04395e;
+  --bg-context-menu: #252526;
+  --bg-badge: #4d78cc;
+  --bg-button: #0e639c;
+  --bg-button-hover: #1177bb;
+  --bg-welcome: #1e1e1e;
+
+  /* Foreground */
+  --fg-primary: #cccccc;
+  --fg-secondary: #969696;
+  --fg-muted: #6a6a6a;
+  --fg-bright: #e7e7e7;
+  --fg-accent: #75beff;
+  --fg-icon: #c5c5c5;
+  --fg-icon-active: #ffffff;
+  --fg-statusbar: #ffffff;
+  --fg-button: #ffffff;
+  --fg-error: #f48771;
+  --fg-warning: #cca700;
+  --fg-success: #89d185;
+  --fg-link: #3794ff;
+
+  /* Borders */
+  --border-primary: #2b2b2b;
+  --border-active: #007acc;
+  --border-focus: #007fd4;
+  --border-tab: #252526;
+
+  /* Sizing */
+  --titlebar-height: 32px;
+  --activity-width: 48px;
+  --sidebar-width: 260px;
+  --statusbar-height: 24px;
+  --panel-height: 220px;
+  --tab-height: 36px;
+
+  /* Typography */
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  --font-size: 13px;
+  --font-size-sm: 11px;
+  --font-size-xs: 10px;
+
+  /* Transition */
+  --transition-fast: 120ms ease;
+  --transition-normal: 200ms ease;
+
+  /* Shadows */
+  --shadow-popup: 0 4px 16px rgba(0,0,0,0.4);
+  --shadow-widget: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* --- Reset & Base --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: var(--font-size);
+  color: var(--fg-primary);
+  background: var(--bg-editor);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  outline: none;
+}
+
+input, select {
+  font: inherit;
+  color: var(--fg-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 4px 8px;
+  outline: none;
+  transition: border var(--transition-fast);
+}
+
+input:focus, select:focus {
+  border-color: var(--border-focus);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(121, 121, 121, 0.3);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(121, 121, 121, 0.5);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* --- Title Bar --- */
+#titlebar {
+  height: var(--titlebar-height);
+  background: var(--bg-titlebar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid rgba(0,0,0,0.2);
+  user-select: none;
+  z-index: 100;
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-icon {
+  font-size: 16px;
+  color: var(--fg-accent);
+}
+
+.app-title {
+  font-size: var(--font-size);
+  font-weight: 600;
+  color: var(--fg-secondary);
+  letter-spacing: 0.3px;
+}
+
+.titlebar-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: var(--font-size-sm);
+  color: var(--fg-secondary);
+}
+
+.titlebar-right {
+  display: flex;
+  align-items: center;
+}
+
+.titlebar-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--fg-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-bright);
+}
+
+/* --- App Shell Layout --- */
+#app-shell {
+  display: flex;
+  height: calc(100vh - var(--titlebar-height) - var(--statusbar-height));
+  overflow: hidden;
+}
+
+/* --- Activity Bar --- */
+#activity-bar {
+  width: var(--activity-width);
+  background: var(--bg-activity);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  border-right: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.activity-btn {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-muted);
+  border-left: 2px solid transparent;
+  transition: color var(--transition-fast);
+  position: relative;
+}
+
+.activity-btn:hover {
+  color: var(--fg-icon);
+}
+
+.activity-btn.active {
+  color: var(--fg-icon-active);
+  border-left-color: var(--fg-icon-active);
+}
+
+.activity-btn .codicon {
+  font-size: 24px;
+}
+
+.activity-spacer {
+  flex: 1;
+}
+
+/* --- Sidebar --- */
+#sidebar {
+  width: var(--sidebar-width);
+  min-width: 170px;
+  max-width: 600px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+#sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  border-right: none;
+  overflow: hidden;
+}
+
+.sidebar-panel {
+  display: none;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sidebar-panel.active {
+  display: flex;
+}
+
+.sidebar-header {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 20px;
+  flex-shrink: 0;
+}
+
+.sidebar-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: var(--fg-secondary);
+}
+
+.sidebar-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.icon-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--fg-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-bright);
+}
+
+.sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* --- File Tree --- */
+#file-tree {
+  padding: 4px 0;
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  font-size: var(--font-size);
+  color: var(--fg-primary);
+  transition: background var(--transition-fast);
+  position: relative;
+}
+
+.tree-item:hover {
+  background: var(--bg-hover);
+}
+
+.tree-item.selected {
+  background: var(--bg-selection);
+}
+
+.tree-item.active {
+  background: #37373d;
+}
+
+.tree-indent {
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.tree-arrow {
+  width: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--fg-secondary);
+  transition: transform var(--transition-fast);
+}
+
+.tree-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.tree-arrow.hidden {
+  visibility: hidden;
+}
+
+.tree-icon {
+  width: 18px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+  font-size: 14px;
+}
+
+.tree-icon.file-python { color: #519aba; }
+.tree-icon.file-text { color: #6a9955; }
+.tree-icon.file-json { color: #cbcb41; }
+.tree-icon.file-md { color: #519aba; }
+.tree-icon.file-default { color: var(--fg-secondary); }
+.tree-icon.folder { color: #dcb67a; }
+.tree-icon.folder-open { color: #e8a838; }
+
+.tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-rename-input {
+  height: 20px;
+  font-size: var(--font-size);
+  padding: 0 4px;
+  width: calc(100% - 50px);
+  background: var(--bg-input);
+  border: 1px solid var(--border-focus);
+  color: var(--fg-primary);
+  border-radius: 2px;
+}
+
+/* --- Resize Handles --- */
+.resize-handle {
+  background: transparent;
+  flex-shrink: 0;
+  z-index: 10;
+  transition: background var(--transition-fast);
+}
+
+.resize-handle:hover, .resize-handle.dragging {
+  background: var(--border-active);
+}
+
+.resize-handle.vertical {
+  width: 4px;
+  cursor: col-resize;
+}
+
+.resize-handle.horizontal {
+  height: 4px;
+  cursor: row-resize;
+}
+
+/* --- Main Content --- */
+#main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 200px;
+}
+
+/* --- Editor Area --- */
+#editor-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 100px;
+  position: relative;
+}
+
+/* --- Tab Bar --- */
+#tab-bar {
+  height: var(--tab-height);
+  background: var(--bg-tab);
+  display: flex;
+  align-items: flex-end;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+#tab-bar::-webkit-scrollbar {
+  height: 3px;
+}
+
+#tabs-container {
+  display: flex;
+  height: 100%;
+  align-items: flex-end;
+}
+
+.tab {
+  height: calc(var(--tab-height) - 1px);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 6px;
+  cursor: pointer;
+  border-right: 1px solid var(--border-tab);
+  background: var(--bg-tab);
+  color: var(--fg-secondary);
+  font-size: var(--font-size);
+  white-space: nowrap;
+  min-width: 100px;
+  max-width: 200px;
+  user-select: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  position: relative;
+}
+
+.tab:hover {
+  background: var(--bg-hover);
+}
+
+.tab.active {
+  background: var(--bg-tab-active);
+  color: var(--fg-bright);
+  border-top: none;
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border-active);
+}
+
+.tab-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.tab-dirty {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fg-bright);
+  flex-shrink: 0;
+  display: none;
+}
+
+.tab.dirty .tab-dirty {
+  display: block;
+}
+
+.tab.dirty .tab-close {
+  display: none;
+}
+
+.tab.dirty:hover .tab-dirty {
+  display: none;
+}
+
+.tab.dirty:hover .tab-close {
+  display: flex;
+}
+
+.tab-close {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 12px;
+  flex-shrink: 0;
+  color: var(--fg-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.tab-close:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--fg-bright);
+}
+
+/* --- Welcome View --- */
+#welcome-view {
+  position: absolute;
+  inset: var(--tab-height) 0 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-welcome);
+  z-index: 5;
+}
+
+#welcome-view.hidden {
+  display: none;
+}
+
+.welcome-content {
+  text-align: center;
+  max-width: 500px;
+  animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.welcome-logo .codicon {
+  font-size: 64px;
+  color: var(--fg-accent);
+  opacity: 0.6;
+}
+
+.welcome-content h1 {
+  font-size: 28px;
+  font-weight: 300;
+  color: var(--fg-bright);
+  margin: 16px 0 4px;
+  letter-spacing: -0.5px;
+}
+
+.welcome-subtitle {
+  color: var(--fg-secondary);
+  font-size: var(--font-size);
+  margin-bottom: 32px;
+}
+
+.welcome-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.welcome-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--fg-accent);
+  font-size: var(--font-size);
+  width: 300px;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.welcome-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-focus);
+}
+
+.welcome-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.shortcut {
+  font-size: var(--font-size-sm);
+  color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--fg-secondary);
+  line-height: 1.6;
+}
+
+/* --- Editor Container --- */
+#editor-container {
+  flex: 1;
+  overflow: hidden;
+  display: none;
+}
+
+#editor-container.visible {
+  display: block;
+}
+
+/* --- Panel (Terminal) --- */
+#panel {
+  height: var(--panel-height);
+  min-height: 80px;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+#panel.collapsed {
+  height: 0 !important;
+  min-height: 0;
+  border-top: none;
+  overflow: hidden;
+}
+
+#panel-header {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 12px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.panel-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: var(--font-size);
+  color: var(--fg-secondary);
+  border-bottom: 1px solid transparent;
+  transition: color var(--transition-fast);
+}
+
+.panel-tab.active {
+  color: var(--fg-bright);
+  border-bottom-color: var(--border-active);
+}
+
+.panel-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.panel-action-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--fg-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.panel-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-bright);
+}
+
+.run-btn {
+  width: auto;
+  padding: 0 10px;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--fg-success);
+}
+
+.run-btn:hover {
+  background: rgba(137, 209, 133, 0.1);
+}
+
+#terminal-container {
+  flex: 1;
+  padding: 0 4px 4px;
+  overflow: hidden;
+}
+
+/* --- Status Bar --- */
+#status-bar {
+  height: var(--statusbar-height);
+  background: var(--bg-statusbar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  font-size: var(--font-size-xs);
+  color: var(--fg-statusbar);
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.status-left, .status-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.status-item {
+  padding: 0 8px;
+  height: var(--statusbar-height);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background var(--transition-fast);
+  cursor: default;
+}
+
+.status-item:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.pyodide-status.loading {
+  opacity: 1;
+}
+
+.pyodide-status.ready {
+  opacity: 1;
+}
+
+.pyodide-status.ready .codicon {
+  color: var(--fg-success);
+}
+
+/* --- Context Menu --- */
+.context-menu {
+  position: fixed;
+  min-width: 180px;
+  background: var(--bg-context-menu);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: var(--shadow-popup);
+  z-index: 1000;
+  animation: contextFadeIn 0.12s ease;
+}
+
+@keyframes contextFadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.context-menu.hidden {
+  display: none;
+}
+
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 16px;
+  font-size: var(--font-size);
+  color: var(--fg-primary);
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.ctx-item:hover {
+  background: var(--bg-selection);
+}
+
+.ctx-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border-primary);
+}
+
+/* --- Search Panel --- */
+.search-container {
+  padding: 8px 12px;
+}
+
+.search-box {
+  width: 100%;
+  height: 28px;
+  font-size: var(--font-size);
+}
+
+.search-results {
+  margin-top: 8px;
+}
+
+.search-result-item {
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: var(--font-size-sm);
+  transition: background var(--transition-fast);
+}
+
+.search-result-item:hover {
+  background: var(--bg-hover);
+}
+
+.search-result-file {
+  color: var(--fg-accent);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.search-result-line {
+  color: var(--fg-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.search-result-match {
+  color: var(--fg-warning);
+  background: rgba(204, 167, 0, 0.15);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* --- Package Installer --- */
+.package-installer {
+  padding: 12px;
+}
+
+.package-info {
+  font-size: var(--font-size-sm);
+  color: var(--fg-secondary);
+  margin-bottom: 12px;
+}
+
+.package-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.package-input-row .search-box {
+  flex: 1;
+}
+
+.small-btn {
+  padding: 4px 12px;
+  background: var(--bg-button);
+  color: var(--fg-button);
+  border-radius: 4px;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  transition: background var(--transition-fast);
+}
+
+.small-btn:hover {
+  background: var(--bg-button-hover);
+}
+
+.installed-list {
+  margin-top: 12px;
+}
+
+.installed-pkg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: var(--font-size-sm);
+  color: var(--fg-secondary);
+}
+
+.installed-pkg .codicon {
+  color: var(--fg-success);
+}
+
+/* --- Settings --- */
+.settings-container {
+  padding: 12px;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.setting-label {
+  font-size: var(--font-size);
+  color: var(--fg-primary);
+}
+
+.setting-input {
+  width: 80px;
+  height: 26px;
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+/* --- Loading Spinner for Codicons --- */
+@keyframes codicon-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.codicon-modifier-spin {
+  animation: codicon-spin 1.5s linear infinite;
+}
+
+/* --- Notification Toast --- */
+.notification {
+  position: fixed;
+  bottom: calc(var(--statusbar-height) + 12px);
+  right: 16px;
+  background: var(--bg-context-menu);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 10px 16px;
+  box-shadow: var(--shadow-popup);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size);
+  color: var(--fg-primary);
+  z-index: 2000;
+  animation: slideIn 0.3s ease;
+  max-width: 400px;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.notification.fadeout {
+  animation: fadeOut 0.3s ease forwards;
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.notification .codicon {
+  font-size: 16px;
+}
+
+.notification.info .codicon { color: var(--fg-accent); }
+.notification.success .codicon { color: var(--fg-success); }
+.notification.error .codicon { color: var(--fg-error); }
+
+/* --- Activity Badge --- */
+.activity-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--bg-badge);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.activity-badge.hidden {
+  display: none;
+}
+
+/* --- Git / Source Control Panel --- */
+.git-panel {
+  padding: 0;
+}
+
+.git-commit-area {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.git-input-row {
+  display: flex;
+  gap: 4px;
+}
+
+.git-commit-input {
+  flex: 1;
+  height: 28px;
+  font-size: var(--font-size);
+  padding: 4px 8px;
+}
+
+.git-commit-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-button);
+  color: var(--fg-button);
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: background var(--transition-fast);
+}
+
+.git-commit-btn:hover {
+  background: var(--bg-button-hover);
+}
+
+.git-action-row {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.git-action-btn {
+  flex: 1;
+  height: 24px;
+  font-size: var(--font-size-xs);
+  color: var(--fg-secondary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.git-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-bright);
+}
+
+.git-section {
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.git-section-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--fg-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.git-section-header:hover {
+  background: var(--bg-hover);
+}
+
+.git-section-header .codicon {
+  font-size: 12px;
+  transition: transform var(--transition-fast);
+}
+
+.git-count {
+  font-size: var(--font-size-xs);
+  background: var(--bg-input);
+  border-radius: 8px;
+  padding: 0 6px;
+  margin-left: 4px;
+  font-weight: 400;
+}
+
+/* --- Git file list --- */
+.git-file-list {
+  padding: 0;
+}
+
+.git-file-item {
+  display: flex;
+  align-items: center;
+  padding: 2px 12px 2px 24px;
+  height: 22px;
+  cursor: pointer;
+  font-size: var(--font-size);
+  transition: background var(--transition-fast);
+  gap: 6px;
+}
+
+.git-file-item:hover {
+  background: var(--bg-hover);
+}
+
+.git-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-file-status {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+
+.git-file-status.status-M { color: #e2c08d; }
+.git-file-status.status-A { color: #89d185; }
+.git-file-status.status-D { color: #f48771; }
+.git-file-status.status-U { color: #969696; }
+
+.git-file-actions {
+  display: none;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.git-file-item:hover .git-file-actions {
+  display: flex;
+}
+
+.git-file-action {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--fg-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.git-file-action:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--fg-bright);
+}
+
+/* --- Git log --- */
+.git-log-list {
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.git-log-item {
+  padding: 6px 12px 6px 24px;
+  cursor: default;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  transition: background var(--transition-fast);
+}
+
+.git-log-item:hover {
+  background: var(--bg-hover);
+}
+
+.git-log-message {
+  font-size: var(--font-size);
+  color: var(--fg-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-log-meta {
+  font-size: var(--font-size-xs);
+  color: var(--fg-muted);
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.git-log-sha {
+  font-family: var(--font-mono);
+  color: var(--fg-accent);
+}
+
+/* --- File tree git status decorations --- */
+.tree-git-status {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  margin-left: auto;
+  padding-right: 8px;
+  flex-shrink: 0;
+}
+
+.tree-git-status.git-modified { color: #e2c08d; }
+.tree-git-status.git-added { color: #89d185; }
+.tree-git-status.git-deleted { color: #f48771; }
+.tree-git-status.git-untracked { color: #969696; }
+
+/* Modified file names get a subtle color hint */
+.tree-item.git-modified .tree-label { color: #e2c08d; }
+.tree-item.git-added .tree-label { color: #89d185; }
+.tree-item.git-deleted .tree-label { color: #f48771; }
+.tree-item.git-untracked .tree-label { color: #969696; }
+
+/* --- Diff editor container --- */
+#diff-container {
+  position: absolute;
+  inset: var(--tab-height) 0 0 0;
+  z-index: 6;
+  display: none;
+}
+
+#diff-container.visible {
+  display: block;
+}
+
+/* --- Branch status bar --- */
+#status-branch {
+  cursor: pointer;
+}
+
+#status-branch:hover {
+  background: rgba(255,255,255,0.15);
+}
