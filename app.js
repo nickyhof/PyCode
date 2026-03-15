@@ -1704,7 +1704,7 @@ git clone <url>                    # Clone a repo
 
   // ─── Copilot Service ───────────────────────────────────────
   const copilot = {
-    token: localStorage.getItem('copilot-token') || '',
+    token: localStorage.getItem('github-pat') || '',
     model: localStorage.getItem('copilot-model') || 'gpt-4o',
     inlineEnabled: localStorage.getItem('copilot-inline') !== 'false',
     mode: 'ask', // 'ask' or 'agent'
@@ -1727,7 +1727,7 @@ git clone <url>                    # Clone a repo
     },
 
     saveSettings() {
-      localStorage.setItem('copilot-token', this.token);
+      localStorage.setItem('github-pat', this.token);
       localStorage.setItem('copilot-model', this.model);
       localStorage.setItem('copilot-inline', String(this.inlineEnabled));
     },
@@ -2225,8 +2225,30 @@ Always explain what you're doing. Keep edits minimal and targeted.`;
       this.style.height = Math.min(this.scrollHeight, 120) + 'px';
     });
 
-    // Settings
-    const tokenInput = $('#setting-copilot-token');
+    // Settings — Git
+    const gitNameInput = $('#setting-git-name');
+    const gitEmailInput = $('#setting-git-email');
+
+    if (gitNameInput) {
+      gitNameInput.value = localStorage.getItem('git-user-name') || '';
+      gitNameInput.addEventListener('change', () => {
+        const val = gitNameInput.value.trim();
+        if (val) localStorage.setItem('git-user-name', val);
+        else localStorage.removeItem('git-user-name');
+      });
+    }
+
+    if (gitEmailInput) {
+      gitEmailInput.value = localStorage.getItem('git-user-email') || '';
+      gitEmailInput.addEventListener('change', () => {
+        const val = gitEmailInput.value.trim();
+        if (val) localStorage.setItem('git-user-email', val);
+        else localStorage.removeItem('git-user-email');
+      });
+    }
+
+    // Settings — Copilot
+    const tokenInput = $('#setting-github-pat');
     const modelSelect = $('#setting-copilot-model');
     const inlineSelect = $('#setting-copilot-inline');
 
@@ -2519,9 +2541,37 @@ Always explain what you're doing. Keep edits minimal and targeted.`;
           break;
         }
 
+        case 'push': {
+          const token = localStorage.getItem('github-pat');
+          if (!token) {
+            termWrite('\x1b[31mNo GitHub PAT configured. Go to Settings → Git to add one.\x1b[0m\r\n');
+            termWrite('\x1b[90mThe token needs Contents: Read and write permission.\x1b[0m\r\n');
+          } else {
+            const branch = await GitModule.currentBranch();
+            termWrite(`\x1b[36mPushing to origin/${branch}...\x1b[0m\r\n`);
+            await GitModule.push(token);
+            termWrite(`\x1b[32m✓ Pushed to origin/${branch}\x1b[0m\r\n`);
+          }
+          break;
+        }
+
+        case 'pull': {
+          const token = localStorage.getItem('github-pat');
+          const branch = await GitModule.currentBranch();
+          termWrite(`\x1b[36mPulling from origin/${branch}...\x1b[0m\r\n`);
+          await GitModule.pull(token || null);
+          // Sync pulled files back to VFS
+          await GitModule.syncGitFSToVfs(vfsSet, () => vfs.clear());
+          renderFileTree();
+          syncFSToWorker();
+          await refreshGitStatus();
+          termWrite(`\x1b[32m✓ Pulled from origin/${branch}\x1b[0m\r\n`);
+          break;
+        }
+
         default:
           termWrite(`\x1b[33mUnknown git command: ${subCmd}\x1b[0m\r\n`);
-          termWrite('\x1b[90mAvailable: clone, status, add, commit, log, branch, checkout, diff\x1b[0m\r\n');
+          termWrite('\x1b[90mAvailable: clone, status, add, commit, log, branch, checkout, diff, push, pull\x1b[0m\r\n');
       }
     } catch (err) {
       termWrite(`\x1b[31mGit error: ${err.message}\x1b[0m\r\n`);

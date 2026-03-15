@@ -46,6 +46,7 @@ bazel test //pkg:tgt    Run a py_test
 git status              Show changed files
 git clone <url>         Clone a repository
 git add / commit / log  Stage, commit, view history
+git push / pull         Push commits / pull updates
 ```
 
 ## Copilot
@@ -88,7 +89,7 @@ All loaded from CDN — nothing to install.
 - **Pyodide, not CPython** — Python runs via WebAssembly (Pyodide). C extensions that aren't pre-compiled for Pyodide won't work (`numpy`, `pandas`, `scikit-learn` do work).
 - **No real pip** — `pip install` uses Pyodide's micropip, which pulls from PyPI but only supports pure-Python wheels and Pyodide-built packages.
 - **Simulated uv/bazel** — `uv` and `bazel` commands are simulated interpretations of config files, not the real tools. They won't run arbitrary build rules.
-- **Git via CORS proxy** — `git clone` routes through a public CORS proxy (`cors.isomorphic-git.org`), which may be slow or rate-limited. Push is not supported.
+- **Git clone/push limitations** — Git uses `isomorphic-git` in-browser, which requires the remote to support CORS. Public GitHub repos work. Push requires a PAT with `Contents: Read and write` permission.
 - **No multi-file debugging** — No breakpoints, debugger, or step-through. Use `print()`.
 - **Storage is IndexedDB** — Files persist in the browser's IndexedDB. Clearing site data erases everything. There is no cloud sync.
 - **Copilot requires a PAT** — The GitHub PAT is stored in `localStorage` (not encrypted). Use a fine-grained token with minimal permissions.

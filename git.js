@@ -11,8 +11,13 @@ const GitModule = (function () {
   let gitReady = false;
   let currentDbName = 'pycode-fs';
   const dir = '/repo';
-  const corsProxy = 'https://cors.isomorphic-git.org';
-  const author = { name: 'PyCode User', email: 'user@pycode.dev' };
+
+  function getAuthor() {
+    return {
+      name: localStorage.getItem('git-user-name') || 'PyCode User',
+      email: localStorage.getItem('git-user-email') || 'user@pycode.dev',
+    };
+  }
 
   // ─── Initialization ──────────────────────────────────────
 
@@ -50,7 +55,7 @@ const GitModule = (function () {
         await git.commit({
           fs, dir,
           message: 'Initial commit',
-          author
+          author: getAuthor()
         });
       }
 
@@ -112,7 +117,7 @@ const GitModule = (function () {
         http: GitHttp,
         dir,
         url,
-        corsProxy,
+
         singleBranch: true,
         depth: 1,
         onProgress: onProgress || undefined,
@@ -300,7 +305,7 @@ const GitModule = (function () {
       const sha = await git.commit({
         fs, dir,
         message: message.trim(),
-        author
+        author: getAuthor()
       });
       return sha;
     } catch (err) {
@@ -406,6 +411,40 @@ const GitModule = (function () {
     await git.deleteBranch({ fs, dir, ref: name });
   }
 
+  // ─── Push / Pull ───────────────────────────────────────────
+
+  async function push(token, onProgress) {
+    if (!gitReady) throw new Error('Git not initialized');
+    if (!token) throw new Error('GitHub PAT required for push');
+
+    const branch = await currentBranch();
+    await git.push({
+      fs,
+      http: GitHttp,
+      dir,
+      remote: 'origin',
+      ref: branch,
+      onAuth: () => ({ username: token, password: 'x-oauth-basic' }),
+      onProgress: onProgress || undefined,
+    });
+  }
+
+  async function pull(token, onProgress) {
+    if (!gitReady) throw new Error('Git not initialized');
+
+    const branch = await currentBranch();
+    await git.pull({
+      fs,
+      http: GitHttp,
+      dir,
+      ref: branch,
+      singleBranch: true,
+      author: getAuthor(),
+      onAuth: token ? () => ({ username: token, password: 'x-oauth-basic' }) : undefined,
+      onProgress: onProgress || undefined,
+    });
+  }
+
   // ─── Public API ──────────────────────────────────────────
 
   return {
@@ -426,5 +465,7 @@ const GitModule = (function () {
     createBranch,
     checkout,
     deleteBranch,
+    push,
+    pull,
   };
 })();

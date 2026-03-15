@@ -199,11 +199,21 @@
               </select>
             </label>
             <div class="settings-divider"></div>
-            <h3 class="settings-section-title">Copilot</h3>
+            <h3 class="settings-section-title">Git</h3>
+            <label class="setting-item">
+              <span class="setting-label">User Name</span>
+              <input type="text" id="setting-git-name" class="setting-input" placeholder="Your Name" />
+            </label>
+            <label class="setting-item">
+              <span class="setting-label">User Email</span>
+              <input type="text" id="setting-git-email" class="setting-input" placeholder="you@example.com" />
+            </label>
             <label class="setting-item">
               <span class="setting-label">GitHub Token</span>
-              <input type="password" id="setting-copilot-token" class="setting-input" placeholder="ghp_..." />
+              <input type="password" id="setting-github-pat" class="setting-input" placeholder="ghp_..." />
             </label>
+            <div class="settings-divider"></div>
+            <h3 class="settings-section-title">Copilot</h3>
             <label class="setting-item">
               <span class="setting-label">Model</span>
               <select id="setting-copilot-model" class="setting-input">
