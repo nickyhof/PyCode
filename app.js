@@ -244,7 +244,7 @@ git clone <url>                    # Clone a repo
   const state = {
     openTabs: [],          // { path, dirty }
     activeTab: null,       // path
-    expandedDirs: new Set(['data']),
+    expandedDirs: new Set(),
     contextMenuTarget: null,
     pyodideReady: false,
     monacoReady: false,
@@ -428,6 +428,7 @@ git clone <url>                    # Clone a repo
     renderTabs();
     switchEditorToTab(path);
     updateWelcomeView();
+    updateCopilotContext();
 
     // Update status bar
     const ext = path.split('.').pop().toLowerCase();
@@ -910,7 +911,7 @@ git clone <url>                    # Clone a repo
 
     // Welcome message
     term.writeln('\x1b[1;36m╔═══════════════════════════════════════╗\x1b[0m');
-    term.writeln('\x1b[1;36m║       \x1b[1;37mPyCode Terminal\x1b[1;36m                ║\x1b[0m');
+    term.writeln('\x1b[1;36m║            \x1b[1;37mPyCode Terminal\x1b[1;36m            ║\x1b[0m');
     term.writeln('\x1b[1;36m╚═══════════════════════════════════════╝\x1b[0m');
     term.writeln('');
     term.writeln('\x1b[90mLoading Python environment...\x1b[0m');
@@ -1701,6 +1702,583 @@ git clone <url>                    # Clone a repo
     termWritePrompt();
   }
 
+  // ─── Copilot Service ───────────────────────────────────────
+  const copilot = {
+    token: localStorage.getItem('copilot-token') || '',
+    model: localStorage.getItem('copilot-model') || 'gpt-4o',
+    inlineEnabled: localStorage.getItem('copilot-inline') !== 'false',
+    mode: 'ask', // 'ask' or 'agent'
+    messages: [], // conversation history
+    streaming: false,
+
+    get headers() {
+      return {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      };
+    },
+
+    get apiUrl() {
+      return 'https://models.inference.ai.azure.com/chat/completions';
+    },
+
+    get configured() {
+      return this.token.length > 0;
+    },
+
+    saveSettings() {
+      localStorage.setItem('copilot-token', this.token);
+      localStorage.setItem('copilot-model', this.model);
+      localStorage.setItem('copilot-inline', String(this.inlineEnabled));
+    },
+
+
+    systemPrompt() {
+      const activeFile = state.activeTab || '';
+      const activeContent = activeFile ? (vfs.get(activeFile)?.content || '') : '';
+      const allFiles = Array.from(vfs.entries())
+        .filter(([, e]) => e.type === 'file')
+        .map(([p]) => p);
+
+      let prompt = `You are a helpful coding assistant inside PyCode, a browser-based Python IDE. The user is working on Python code.`;
+
+      if (activeFile) {
+        prompt += `\n\nThe user has "${activeFile}" open:\n\`\`\`\n${activeContent}\n\`\`\``;
+      }
+
+      prompt += `\n\nFiles in workspace: ${allFiles.join(', ')}`;
+
+      if (this.mode === 'agent') {
+        prompt += `\n\nYou are in AGENT mode. You can edit files in the workspace.
+
+For EDITING existing files, use search/replace blocks:
+\`\`\`edit:filename.py
+<<<SEARCH
+exact lines to find
+===
+replacement lines
+REPLACE>>>
+\`\`\`
+
+You can include multiple <<<SEARCH/===/ REPLACE>>> blocks in one edit block.
+The SEARCH text must EXACTLY match existing lines in the file.
+
+For CREATING new files, use:
+\`\`\`newfile:filename.py
+file content here
+\`\`\`
+
+Always explain what you're doing. Keep edits minimal and targeted.`;
+      }
+
+      return prompt;
+    },
+
+    async *streamChat(userMessage) {
+      this.messages.push({ role: 'user', content: userMessage });
+
+      const body = {
+        model: this.model,
+        messages: [
+          { role: 'system', content: this.systemPrompt() },
+          ...this.messages,
+        ],
+        stream: true,
+      };
+
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        if (response.status === 401) {
+          throw new Error('Token unauthorized — make sure your GitHub PAT has the **Models** permission. Update at [github.com/settings/tokens](https://github.com/settings/tokens).');
+        }
+        throw new Error(`API error (${response.status}): ${err}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') break;
+
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              fullContent += delta;
+              yield delta;
+            }
+          } catch {}
+        }
+      }
+
+      this.messages.push({ role: 'assistant', content: fullContent });
+    },
+
+    async getInlineCompletion(prefix, suffix, language) {
+      if (!this.configured || !this.inlineEnabled) return null;
+
+      const body = {
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a code completion engine. Return ONLY the code that continues from where the cursor is. No explanation, no markdown fences, just raw code. Be concise — typically 1-3 lines.',
+          },
+          {
+            role: 'user',
+            content: `Complete this ${language} code. Return ONLY the completion text.\n\n${prefix}█${suffix}`,
+          },
+        ],
+        max_tokens: 128,
+        temperature: 0,
+      };
+
+      const response = await fetch(this.apiUrl, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) return null;
+
+      const result = await response.json();
+      return result.choices?.[0]?.message?.content?.trim() || null;
+    },
+
+    clearHistory() {
+      this.messages = [];
+    },
+  };
+
+  // ─── Copilot Chat Panel UI ───────────────────────────────
+  function toggleCopilotPanel() {
+    const panel = $('#copilot-panel');
+    const resize = $('#copilot-resize');
+    const btn = $('#btn-toggle-copilot');
+    const isHidden = panel.classList.contains('hidden');
+
+    panel.classList.toggle('hidden', !isHidden);
+    resize.classList.toggle('hidden', !isHidden);
+    btn.classList.toggle('active', isHidden);
+
+    // Update context file
+    updateCopilotContext();
+  }
+
+  function updateCopilotContext() {
+    const el = $('#copilot-context-file');
+    if (el) {
+      el.textContent = state.activeTab || 'No file open';
+    }
+  }
+
+  function copilotAddMessage(role, content) {
+    const container = $('#copilot-messages');
+    // Remove welcome if present
+    const welcome = container.querySelector('.copilot-welcome');
+    if (welcome) welcome.remove();
+
+    const div = document.createElement('div');
+    div.className = `copilot-msg copilot-msg-${role}`;
+
+    if (role === 'assistant') {
+      // Parse markdown
+      div.innerHTML = typeof marked !== 'undefined' ? marked.parse(content) : content.replace(/\n/g, '<br>');
+      // Process agent mode file edits
+      processAgentEdits(div);
+    } else {
+      div.textContent = content;
+    }
+
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return div;
+  }
+
+  function copilotShowTyping() {
+    const container = $('#copilot-messages');
+    const div = document.createElement('div');
+    div.className = 'copilot-typing';
+    div.id = 'copilot-typing-indicator';
+    div.innerHTML = '<div class="copilot-typing-dot"></div><div class="copilot-typing-dot"></div><div class="copilot-typing-dot"></div>';
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function copilotRemoveTyping() {
+    const el = $('#copilot-typing-indicator');
+    if (el) el.remove();
+  }
+
+  function processAgentEdits(msgEl) {
+    const pres = msgEl.querySelectorAll('pre code');
+    let hasEdits = false;
+
+    pres.forEach(code => {
+      const parent = code.parentElement;
+      const text = code.textContent;
+      const langClass = code.className || '';
+
+      // New file: ```newfile:filename.py
+      const newfileMatch = langClass.match(/language-newfile:(.+)/);
+      if (newfileMatch) {
+        const filename = newfileMatch[1];
+        hasEdits = true;
+        const editBlock = createEditBlock(filename, text, 'new', () => {
+          vfsSet(filename, text);
+          renderFileTree();
+          openFile(filename);
+        });
+        parent.replaceWith(editBlock);
+        return;
+      }
+
+      // Edit: ```edit:filename.py with <<<SEARCH / === / REPLACE>>> blocks
+      const editMatch = langClass.match(/language-edit:(.+)/);
+      if (!editMatch) return;
+
+      const filename = editMatch[1];
+      hasEdits = true;
+
+      // Parse search/replace blocks
+      const blocks = [];
+      const blockRegex = /<<<SEARCH\n([\s\S]*?)\n===\n([\s\S]*?)\nREPLACE>>>/g;
+      let match;
+      while ((match = blockRegex.exec(text)) !== null) {
+        blocks.push({ search: match[1], replace: match[2] });
+      }
+
+      // If no search/replace blocks found, fall back to full replacement
+      if (blocks.length === 0) {
+        const editBlock = createEditBlock(filename, text, 'replace', () => {
+          vfsSet(filename, text);
+          renderFileTree();
+          if (state.activeTab === filename && editor) {
+            editor.getModel()?.setValue(text);
+          }
+        });
+        parent.replaceWith(editBlock);
+        return;
+      }
+
+      // Build a preview showing the changes
+      let preview = blocks.map((b, i) => {
+        return `// Change ${i + 1}:\n- ${b.search.split('\n').join('\n- ')}\n+ ${b.replace.split('\n').join('\n+ ')}`;
+      }).join('\n\n');
+
+      const editBlock = createEditBlock(filename, preview, 'patch', () => {
+        let content = vfs.get(filename)?.content || '';
+        let applied = 0;
+        for (const block of blocks) {
+          if (content.includes(block.search)) {
+            content = content.replace(block.search, block.replace);
+            applied++;
+          }
+        }
+        if (applied === 0) {
+          alert(`Could not find matching text in ${filename}`);
+          return false;
+        }
+        vfsSet(filename, content);
+        renderFileTree();
+        if (state.activeTab === filename && editor) {
+          editor.getModel()?.setValue(content);
+        }
+        return true;
+      });
+      parent.replaceWith(editBlock);
+    });
+
+    // Add "Accept All" button if there are pending edits
+    if (hasEdits) {
+      addAcceptAllButton(msgEl);
+    }
+  }
+
+  function createEditBlock(filename, displayText, type, applyFn) {
+    const label = type === 'new' ? '(new file)' : type === 'patch' ? '(edit)' : '(replace)';
+    const editBlock = document.createElement('div');
+    editBlock.className = 'copilot-file-edit';
+    editBlock.dataset.pending = 'true';
+    editBlock.innerHTML = `
+      <div class="copilot-file-edit-header">
+        <span><span class="codicon codicon-file"></span> ${filename} <small>${label}</small></span>
+        <div class="copilot-file-edit-actions">
+          <button class="accept-btn" title="Apply edit">✓ Accept</button>
+          <button class="reject-btn" title="Dismiss">✗ Reject</button>
+        </div>
+      </div>
+      <pre><code>${escapeHTML(displayText)}</code></pre>
+    `;
+
+    editBlock.querySelector('.accept-btn').addEventListener('click', () => {
+      const result = applyFn();
+      if (result === false) return;
+      editBlock.dataset.pending = '';
+      editBlock.querySelector('.copilot-file-edit-header').style.borderColor = '#00c853';
+      editBlock.querySelector('.accept-btn').textContent = '✓ Applied';
+      editBlock.querySelector('.accept-btn').disabled = true;
+      editBlock.querySelector('.reject-btn').style.display = 'none';
+      updateAcceptAllVisibility();
+    });
+
+    editBlock.querySelector('.reject-btn').addEventListener('click', () => {
+      editBlock.dataset.pending = '';
+      editBlock.style.opacity = '0.4';
+      editBlock.querySelector('.reject-btn').textContent = 'Dismissed';
+      editBlock.querySelector('.reject-btn').disabled = true;
+      editBlock.querySelector('.accept-btn').style.display = 'none';
+      updateAcceptAllVisibility();
+    });
+
+    return editBlock;
+  }
+
+  function addAcceptAllButton(msgEl) {
+    const container = $('#copilot-messages');
+    // Remove existing accept-all if any
+    const existing = container.querySelector('.copilot-accept-all');
+    if (existing) existing.remove();
+
+    const bar = document.createElement('div');
+    bar.className = 'copilot-accept-all';
+    bar.innerHTML = '<button class="copilot-accept-all-btn">✓ Accept All</button>';
+    bar.querySelector('button').addEventListener('click', () => {
+      container.querySelectorAll('.copilot-file-edit[data-pending="true"] .accept-btn').forEach(btn => {
+        if (!btn.disabled) btn.click();
+      });
+    });
+    container.appendChild(bar);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function updateAcceptAllVisibility() {
+    const container = $('#copilot-messages');
+    const bar = container.querySelector('.copilot-accept-all');
+    if (!bar) return;
+    const pending = container.querySelectorAll('.copilot-file-edit[data-pending="true"]');
+    if (pending.length === 0) {
+      bar.remove();
+    }
+  }
+
+  function escapeHTML(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  async function copilotSendMessage() {
+    const input = $('#copilot-input');
+    const message = input.value.trim();
+    if (!message || copilot.streaming) return;
+
+    if (!copilot.configured) {
+      copilotAddMessage('assistant', '⚠️ Please add your GitHub token in **Settings → Copilot → GitHub Token** to use Copilot.');
+      return;
+    }
+
+    // Add user message
+    copilotAddMessage('user', message);
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Show typing indicator
+    copilotShowTyping();
+    copilot.streaming = true;
+    $('#btn-copilot-send').disabled = true;
+
+    try {
+      const container = $('#copilot-messages');
+      // Create assistant message div for streaming
+      const welcome = container.querySelector('.copilot-welcome');
+      if (welcome) welcome.remove();
+
+      copilotRemoveTyping();
+
+      const assistantDiv = document.createElement('div');
+      assistantDiv.className = 'copilot-msg copilot-msg-assistant';
+      container.appendChild(assistantDiv);
+
+      let fullContent = '';
+      for await (const chunk of copilot.streamChat(message)) {
+        fullContent += chunk;
+        // Re-render markdown on each chunk
+        assistantDiv.innerHTML = typeof marked !== 'undefined' ? marked.parse(fullContent) : fullContent.replace(/\n/g, '<br>');
+        container.scrollTop = container.scrollHeight;
+      }
+
+      // Final render + process agent edits
+      assistantDiv.innerHTML = typeof marked !== 'undefined' ? marked.parse(fullContent) : fullContent.replace(/\n/g, '<br>');
+      processAgentEdits(assistantDiv);
+    } catch (err) {
+      copilotRemoveTyping();
+      copilotAddMessage('assistant', `❌ Error: ${err.message}`);
+    } finally {
+      copilot.streaming = false;
+      $('#btn-copilot-send').disabled = false;
+    }
+  }
+
+  // ─── Inline Completions ──────────────────────────────────
+  function registerInlineCompletions() {
+    if (!window.monaco) return;
+
+    let debounceTimer = null;
+
+    monaco.languages.registerInlineCompletionsProvider('python', {
+      provideInlineCompletions: async (model, position, context, token) => {
+        if (!copilot.configured || !copilot.inlineEnabled) {
+          return { items: [] };
+        }
+
+        // Debounce
+        if (debounceTimer) clearTimeout(debounceTimer);
+        return new Promise((resolve) => {
+          debounceTimer = setTimeout(async () => {
+            if (token.isCancellationRequested) {
+              resolve({ items: [] });
+              return;
+            }
+
+            const textModel = model;
+            const offset = textModel.getOffsetAt(position);
+            const fullText = textModel.getValue();
+            const prefix = fullText.substring(0, offset);
+            const suffix = fullText.substring(offset);
+
+            // Don't complete if line is empty or just whitespace
+            const line = textModel.getLineContent(position.lineNumber);
+            if (line.trim().length === 0) {
+              resolve({ items: [] });
+              return;
+            }
+
+            try {
+              const completion = await copilot.getInlineCompletion(prefix, suffix, 'python');
+              if (completion && !token.isCancellationRequested) {
+                resolve({
+                  items: [{
+                    insertText: completion,
+                    range: new monaco.Range(
+                      position.lineNumber, position.column,
+                      position.lineNumber, position.column
+                    ),
+                  }],
+                });
+              } else {
+                resolve({ items: [] });
+              }
+            } catch {
+              resolve({ items: [] });
+            }
+          }, 500);
+        });
+      },
+      freeInlineCompletions: () => {},
+    });
+  }
+
+  // ─── Copilot Init ─────────────────────────────────────────
+  function initCopilot() {
+    // Toggle panel
+    $('#btn-toggle-copilot').addEventListener('click', toggleCopilotPanel);
+    $('#btn-copilot-close').addEventListener('click', toggleCopilotPanel);
+
+    // Mode toggle
+    $$('.copilot-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $$('.copilot-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        copilot.mode = btn.dataset.mode;
+      });
+    });
+
+    // Send message
+    $('#btn-copilot-send').addEventListener('click', copilotSendMessage);
+    $('#copilot-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        copilotSendMessage();
+      }
+    });
+
+    // Auto-grow textarea
+    $('#copilot-input').addEventListener('input', function () {
+      this.style.height = 'auto';
+      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    });
+
+    // Settings
+    const tokenInput = $('#setting-copilot-token');
+    const modelSelect = $('#setting-copilot-model');
+    const inlineSelect = $('#setting-copilot-inline');
+
+    if (tokenInput) {
+      tokenInput.value = copilot.token;
+      tokenInput.addEventListener('change', () => {
+        copilot.token = tokenInput.value.trim();
+        copilot.saveSettings();
+      });
+    }
+
+    if (modelSelect) {
+      modelSelect.value = copilot.model;
+      modelSelect.addEventListener('change', () => {
+        copilot.model = modelSelect.value;
+        copilot.saveSettings();
+      });
+    }
+
+    if (inlineSelect) {
+      inlineSelect.value = String(copilot.inlineEnabled);
+      inlineSelect.addEventListener('change', () => {
+        copilot.inlineEnabled = inlineSelect.value === 'true';
+        copilot.saveSettings();
+      });
+    }
+
+    // Resize handle for copilot panel
+    const resizeHandle = $('#copilot-resize');
+    if (resizeHandle) {
+      let startX, startWidth;
+      resizeHandle.addEventListener('mousedown', (e) => {
+        const panel = $('#copilot-panel');
+        startX = e.clientX;
+        startWidth = panel.offsetWidth;
+        const onMove = (e) => {
+          const newWidth = startWidth - (e.clientX - startX);
+          panel.style.width = Math.max(260, Math.min(600, newWidth)) + 'px';
+        };
+        const onUp = () => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    }
+
+    // Register inline completions after Monaco is ready
+    registerInlineCompletions();
+  }
+
   // ─── Clone Repo Orchestration ───────────────────────────
   async function cloneRepo(url) {
     const overlay = $('#clone-overlay');
@@ -2257,10 +2835,18 @@ git clone <url>                    # Clone a repo
       termWritePrompt();
     });
 
-    // Toggle panel
+    // Toggle panel (both the panel button and the titlebar button)
     $('#btn-toggle-panel').addEventListener('click', () => {
       dom.panel.classList.toggle('collapsed');
       fitTerminal();
+    });
+    $('#btn-titlebar-terminal').addEventListener('click', () => {
+      dom.panel.classList.toggle('collapsed');
+      fitTerminal();
+    });
+    // Command palette
+    $('#btn-command-palette').addEventListener('click', () => {
+      showNotification('Command palette coming soon!', 'info');
     });
 
     // Welcome buttons
@@ -2624,7 +3210,159 @@ git clone <url>                    # Clone a repo
   });
 
   // ─── Initialize ──────────────────────────────────────────
+  // ─── Workspace Management ─────────────────────────────────
+  function getWorkspaces() {
+    try { return JSON.parse(localStorage.getItem('pycode-workspaces') || '["default"]'); }
+    catch { return ['default']; }
+  }
+
+  function saveWorkspaces(list) {
+    localStorage.setItem('pycode-workspaces', JSON.stringify(list));
+  }
+
+  function getCurrentWorkspace() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('ws') || localStorage.getItem('pycode-current-ws') || 'default';
+  }
+
+  function getDbName(ws) {
+    return ws === 'default' ? 'pycode-fs' : `pycode-ws-${ws}`;
+  }
+
+  function switchWorkspace(name) {
+    localStorage.setItem('pycode-current-ws', name);
+    // Reload with ws param (preserve repo param if any)
+    const url = new URL(window.location.href);
+    url.searchParams.set('ws', name);
+    url.searchParams.delete('repo');
+    window.location.href = url.toString();
+  }
+
+  function createWorkspace() {
+    const dropdown = $('#workspace-dropdown');
+    const existingInput = dropdown.querySelector('.ws-new-input');
+    if (existingInput) return; // already showing
+
+    // Create inline input
+    const inputRow = document.createElement('div');
+    inputRow.className = 'workspace-dropdown-item ws-new-input';
+    inputRow.style.padding = '4px 12px';
+    inputRow.innerHTML = `<input type="text" placeholder="workspace name..." 
+      style="width:100%;background:var(--bg-input);border:1px solid var(--fg-accent);
+      color:var(--fg-primary);padding:4px 6px;border-radius:4px;font-size:12px;
+      font-family:var(--font-ui);outline:none;" />`;
+
+    const btnNew = $('#btn-new-workspace');
+    btnNew.parentElement.insertBefore(inputRow, btnNew);
+
+    const input = inputRow.querySelector('input');
+    input.focus();
+
+    function submit() {
+      const name = input.value.trim();
+      if (!name) { inputRow.remove(); return; }
+      const slug = name.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      const list = getWorkspaces();
+      if (!list.includes(slug)) {
+        list.push(slug);
+        saveWorkspaces(list);
+      }
+      switchWorkspace(slug);
+    }
+
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') submit();
+      if (e.key === 'Escape') inputRow.remove();
+    });
+    input.addEventListener('click', (e) => e.stopPropagation());
+  }
+
+  function deleteWorkspace(name) {
+    if (name === 'default') return;
+    if (name === getCurrentWorkspace()) return; // can't delete active
+    // Delete IndexedDB
+    const dbName = getDbName(name);
+    indexedDB.deleteDatabase(dbName);
+    // Remove from list
+    const list = getWorkspaces().filter(w => w !== name);
+    saveWorkspaces(list);
+    renderWorkspaceDropdown();
+  }
+
+  function renderWorkspaceDropdown() {
+    const list = getWorkspaces();
+    const current = getCurrentWorkspace();
+    const container = $('#workspace-list');
+    if (!container) return;
+
+    container.innerHTML = '';
+    list.forEach(ws => {
+      const btn = document.createElement('button');
+      btn.className = 'workspace-dropdown-item' + (ws === current ? ' active' : '');
+      btn.innerHTML = `<span class="codicon codicon-folder"></span> ${ws}`;
+      if (ws !== 'default' && ws !== current) {
+        const del = document.createElement('span');
+        del.className = 'ws-delete codicon codicon-trash';
+        del.title = 'Delete workspace';
+        del.addEventListener('click', (e) => { e.stopPropagation(); deleteWorkspace(ws); });
+        btn.appendChild(del);
+      }
+      btn.addEventListener('click', () => {
+        if (ws !== current) switchWorkspace(ws);
+        $('#workspace-dropdown').classList.add('hidden');
+      });
+      container.appendChild(btn);
+    });
+  }
+
+  function initWorkspaces() {
+    const current = getCurrentWorkspace();
+    localStorage.setItem('pycode-current-ws', current);
+
+    // Ensure current is in list
+    const list = getWorkspaces();
+    if (!list.includes(current)) {
+      list.push(current);
+      saveWorkspaces(list);
+    }
+
+    // Update UI
+    const nameEl = $('#workspace-name');
+    if (nameEl) nameEl.textContent = current;
+
+    // Toggle dropdown
+    const btn = $('#btn-workspace');
+    const dropdown = $('#workspace-dropdown');
+    if (btn && dropdown) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        renderWorkspaceDropdown();
+        dropdown.classList.toggle('hidden');
+      });
+      // Close on outside click
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('#workspace-picker')) {
+          dropdown.classList.add('hidden');
+        }
+      });
+    }
+
+    // New workspace button
+    const newBtn = $('#btn-new-workspace');
+    if (newBtn) newBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      createWorkspace();
+    });
+
+    return current;
+  }
+
   async function init() {
+    // Initialize workspaces
+    const currentWs = initWorkspaces();
+    const dbName = getDbName(currentWs);
+
     // Initialize virtual filesystem
     vfsInit();
 
@@ -2664,18 +3402,39 @@ git clone <url>                    # Clone a repo
     // Initialize Pyodide worker
     initPyodideWorker();
 
+    // Initialize Copilot
+    initCopilot();
+
     // Check for ?repo= URL parameter
     const urlParams = new URLSearchParams(window.location.search);
     const repoUrl = urlParams.get('repo');
 
     if (repoUrl) {
-      // Clone from URL param — skip default VFS init git
-      termWrite('\x1b[36mRepository URL detected, cloning...\x1b[0m\r\n');
-      // Give Monaco and terminal a moment to render, then clone
+      // Extract repo name from URL for workspace
+      const repoName = repoUrl.replace(/\.git$/, '').split('/').pop() || 'cloned-repo';
+      const wsSlug = repoName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+      
+      if (currentWs !== wsSlug) {
+        // Switch to a workspace named after the repo
+        const list = getWorkspaces();
+        if (!list.includes(wsSlug)) {
+          list.push(wsSlug);
+          saveWorkspaces(list);
+        }
+        localStorage.setItem('pycode-current-ws', wsSlug);
+        // Reload into the new workspace with repo param
+        const url = new URL(window.location.href);
+        url.searchParams.set('ws', wsSlug);
+        window.location.href = url.toString();
+        return;
+      }
+      
+      // Already in the right workspace — clone
+      termWrite('\x1b[36mCloning into workspace "' + wsSlug + '"...\x1b[0m\r\n');
       setTimeout(() => cloneRepo(repoUrl), 300);
     } else {
       // Normal init — set up git with existing VFS files
-      const gitOk = await GitModule.init(vfsGetAllFiles);
+      const gitOk = await GitModule.init(vfsGetAllFiles, dbName);
       if (gitOk) {
         await refreshGitStatus();
         termWrite('\x1b[32m✓ Git initialized\x1b[0m\r\n');

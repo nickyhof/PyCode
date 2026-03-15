@@ -27,11 +27,29 @@
       <span class="app-title">PyCode</span>
     </div>
     <div class="titlebar-center">
+      <div id="workspace-picker" class="workspace-picker">
+        <button id="btn-workspace" class="workspace-btn" title="Switch Workspace">
+          <span class="codicon codicon-folder"></span>
+          <span id="workspace-name">default</span>
+          <span class="codicon codicon-chevron-down"></span>
+        </button>
+        <div id="workspace-dropdown" class="workspace-dropdown hidden">
+          <div id="workspace-list" class="workspace-list"></div>
+          <div class="workspace-dropdown-divider"></div>
+          <button class="workspace-dropdown-item" id="btn-new-workspace">
+            <span class="codicon codicon-add"></span> New Workspace
+          </button>
+        </div>
+      </div>
+      <span class="titlebar-sep">—</span>
       <span id="titlebar-filename">Welcome</span>
     </div>
     <div class="titlebar-right">
-      <button id="btn-command-palette" class="titlebar-btn" title="Command Palette (Ctrl+Shift+P)">
+      <button id="btn-titlebar-terminal" class="titlebar-btn" title="Toggle Terminal (Ctrl+`)">
         <span class="codicon codicon-terminal"></span>
+      </button>
+      <button id="btn-command-palette" class="titlebar-btn" title="Command Palette (Ctrl+Shift+P)">
+        <span class="codicon codicon-search"></span>
       </button>
     </div>
   </header>
@@ -52,6 +70,9 @@
       </button>
       <button class="activity-btn" data-panel="extensions" title="Packages">
         <span class="codicon codicon-extensions"></span>
+      </button>
+      <button class="activity-btn active" id="btn-toggle-copilot" title="Copilot Chat">
+        <span class="codicon codicon-copilot"></span>
       </button>
       <div class="activity-spacer"></div>
       <button class="activity-btn" data-panel="settings" title="Settings">
@@ -177,6 +198,29 @@
                 <option value="false">Hidden</option>
               </select>
             </label>
+            <div class="settings-divider"></div>
+            <h3 class="settings-section-title">Copilot</h3>
+            <label class="setting-item">
+              <span class="setting-label">GitHub Token</span>
+              <input type="password" id="setting-copilot-token" class="setting-input" placeholder="ghp_..." />
+            </label>
+            <label class="setting-item">
+              <span class="setting-label">Model</span>
+              <select id="setting-copilot-model" class="setting-input">
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
+                <option value="o3-mini">o3-mini</option>
+                <option value="Mistral-large">Mistral Large</option>
+                <option value="DeepSeek-R1">DeepSeek R1</option>
+              </select>
+            </label>
+            <label class="setting-item">
+              <span class="setting-label">Inline Completions</span>
+              <select id="setting-copilot-inline" class="setting-input">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+            </label>
           </div>
         </div>
       </div>
@@ -259,6 +303,42 @@
         <div id="terminal-container"></div>
       </div>
     </main>
+
+    <!-- Copilot Chat Panel (right side) -->
+    <div id="copilot-resize" class="resize-handle vertical"></div>
+    <aside id="copilot-panel">
+      <div class="copilot-header">
+        <span class="copilot-title">
+          <span class="codicon codicon-copilot"></span> Copilot
+        </span>
+        <div class="copilot-mode-toggle">
+          <button class="copilot-mode-btn active" data-mode="ask">Ask</button>
+          <button class="copilot-mode-btn" data-mode="agent">Agent</button>
+        </div>
+        <button id="btn-copilot-close" class="icon-btn" title="Close">
+          <span class="codicon codicon-close"></span>
+        </button>
+      </div>
+      <div id="copilot-messages" class="copilot-messages">
+        <div class="copilot-welcome">
+          <span class="codicon codicon-copilot copilot-welcome-icon"></span>
+          <p>How can I help you?</p>
+          <p class="copilot-welcome-hint">Ask about your code, or switch to <strong>Agent</strong> mode to edit files.</p>
+        </div>
+      </div>
+      <div class="copilot-input-area">
+        <div class="copilot-context-bar" id="copilot-context">
+          <span class="codicon codicon-file"></span>
+          <span id="copilot-context-file">No file open</span>
+        </div>
+        <div class="copilot-input-row">
+          <textarea id="copilot-input" class="copilot-input" placeholder="Ask Copilot..." rows="1"></textarea>
+          <button id="btn-copilot-send" class="copilot-send-btn" title="Send">
+            <span class="codicon codicon-send"></span>
+          </button>
+        </div>
+      </div>
+    </aside>
   </div>
 
   <!-- Status Bar -->
@@ -305,6 +385,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@isomorphic-git/lightning-fs@4.6.0/dist/lightning-fs.min.js"></script>
   <script src="https://unpkg.com/isomorphic-git@1.27.1"></script>
   <script src="https://unpkg.com/isomorphic-git@1.27.1/http/web/index.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="git.js"></script>
   <script src="app.js"></script>
 </body>

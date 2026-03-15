@@ -9,15 +9,17 @@ const GitModule = (function () {
   let fs = null;
   let pfs = null;      // promisified fs
   let gitReady = false;
+  let currentDbName = 'pycode-fs';
   const dir = '/repo';
   const corsProxy = 'https://cors.isomorphic-git.org';
   const author = { name: 'PyCode User', email: 'user@pycode.dev' };
 
   // ─── Initialization ──────────────────────────────────────
 
-  async function init(vfsGetAllFiles) {
+  async function init(vfsGetAllFiles, fsName) {
     try {
-      fs = new LightningFS('pycode-fs');
+      if (fsName) currentDbName = fsName;
+      fs = new LightningFS(currentDbName);
       pfs = fs.promises;
 
       // Create repo directory
@@ -88,10 +90,11 @@ const GitModule = (function () {
     await rmrf(dir);
   }
 
-  async function clone(url, onProgress) {
+  async function clone(url, onProgress, fsName) {
     try {
       if (!fs) {
-        fs = new LightningFS('pycode-fs');
+        if (fsName) currentDbName = fsName;
+        fs = new LightningFS(currentDbName);
         pfs = fs.promises;
       }
 
