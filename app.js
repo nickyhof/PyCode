@@ -912,6 +912,7 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
       termWrite('  \x1b[36mpip install <pkg>\x1b[0m  Install a package\r\n');
       termWrite('  \x1b[36mls\x1b[0m                  List files\r\n');
       termWrite('  \x1b[36mcat <file>\x1b[0m         Display file contents\r\n');
+      termWrite('  \x1b[36mgit clone \x1b[90m<url>\x1b[0m      Clone a repository\r\n');
       termWrite('  \x1b[36mgit status\x1b[0m         Show changed files\r\n');
       termWrite('  \x1b[36mgit add .\x1b[0m          Stage all changes\r\n');
       termWrite('  \x1b[36mgit add <file>\x1b[0m     Stage a file\r\n');
@@ -919,6 +920,10 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
       termWrite('  \x1b[36mgit log\x1b[0m            Show commit history\r\n');
       termWrite('  \x1b[36mgit branch\x1b[0m         List branches\r\n');
       termWrite('  \x1b[36mgit diff <file>\x1b[0m    Show file diff\r\n');
+      termWrite('  \x1b[36muv sync\x1b[0m            Install workspace deps\r\n');
+      termWrite('  \x1b[36muv run \x1b[90m<file>\x1b[0m       Run a Python file\r\n');
+      termWrite('  \x1b[36muv run --package \x1b[90m<pkg> <cmd>\x1b[0m  Run entrypoint\r\n');
+      termWrite('  \x1b[36muv pip install \x1b[90m<pkg>\x1b[0m  Install package\r\n');
       termWrite('  \x1b[36mclear\x1b[0m              Clear terminal\r\n');
       termWrite('  \x1b[36mhelp\x1b[0m               Show this help\r\n');
       termWrite('\r\n');
@@ -983,6 +988,12 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
       return;
     }
 
+    // UV commands
+    if (cmd.startsWith('uv ')) {
+      handleUvCommand(cmd);
+      return;
+    }
+
     // Try to run as Python code
     if (state.pyodideReady) {
       pyWorker.postMessage({ type: 'repl', data: { code: cmd } });
@@ -992,16 +1003,429 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
     }
   }
 
+  // ─── Lightweight TOML Parser ──────────────────────────────
+  // Handles tables, arrays-of-strings, key-value strings, and inline tables.
+  // Enough for pyproject.toml parsing — not a full TOML spec implementation.
+  function parseTOML(text) {
+    const result = {};
+    let current = result;
+    let currentPath = [];
+    const lines = text.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim();
+
+      // Skip comments and blank lines
+      if (!line || line.startsWith('#')) continue;
+
+      // Array of tables [[section.name]]
+      let m = line.match(/^\[\[([^\]]+)\]\]/);
+      if (m) {
+        const path = m[1].split('.');
+        let obj = result;
+        for (let p = 0; p < path.length; p++) {
+          const key = path[p].trim().replace(/^"|"$/g, '');
+          if (p === path.length - 1) {
+            if (!obj[key]) obj[key] = [];
+            const entry = {};
+            obj[key].push(entry);
+            current = entry;
+          } else {
+            if (!obj[key]) obj[key] = {};
+            obj = obj[key];
+          }
+        }
+        continue;
+      }
+
+      // Table header [section.name]
+      m = line.match(/^\[([^\]]+)\]/);
+      if (m) {
+        const path = m[1].split('.');
+        current = result;
+        for (const key of path) {
+          const k = key.trim().replace(/^"|"$/g, '');
+          if (!current[k]) current[k] = {};
+          current = current[k];
+        }
+        currentPath = path;
+        continue;
+      }
+
+      // Key = value
+      m = line.match(/^([^=]+)=(.*)$/);
+      if (m) {
+        let key = m[1].trim().replace(/^"|"$/g, '');
+        let val = m[2].trim();
+
+        // Multi-line array
+        if (val.startsWith('[') && !val.includes(']')) {
+          let arr = val;
+          while (i + 1 < lines.length && !arr.includes(']')) {
+            i++;
+            arr += ' ' + lines[i].trim();
+          }
+          val = arr;
+        }
+
+        current[key] = parseTOMLValue(val);
+      }
+    }
+    return result;
+  }
+
+  function parseTOMLValue(val) {
+    val = val.trim();
+    // Remove trailing inline comment
+    const commentMatch = val.match(/^("[^"]*"|'[^']*'|\[[^\]]*\]|\{[^}]*\}|[^#]*)#/);
+    if (commentMatch) val = commentMatch[1].trim();
+
+    // String
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      return val.slice(1, -1);
+    }
+    // Boolean
+    if (val === 'true') return true;
+    if (val === 'false') return false;
+    // Number
+    if (/^-?\d+(\.\d+)?$/.test(val)) return Number(val);
+    // Array
+    if (val.startsWith('[') && val.endsWith(']')) {
+      const inner = val.slice(1, -1).trim();
+      if (!inner) return [];
+      // Split on commas, respecting quotes
+      const items = [];
+      let buf = '';
+      let inQuote = false;
+      let quoteChar = '';
+      let braces = 0;
+      for (let c = 0; c < inner.length; c++) {
+        const ch = inner[c];
+        if (inQuote) {
+          buf += ch;
+          if (ch === quoteChar) inQuote = false;
+        } else if (ch === '{') {
+          braces++;
+          buf += ch;
+        } else if (ch === '}') {
+          braces--;
+          buf += ch;
+        } else if (ch === ',' && braces === 0) {
+          const trimmed = buf.trim();
+          if (trimmed) items.push(parseTOMLValue(trimmed));
+          buf = '';
+        } else {
+          if (ch === '"' || ch === "'") { inQuote = true; quoteChar = ch; }
+          buf += ch;
+        }
+      }
+      const last = buf.trim();
+      if (last) items.push(parseTOMLValue(last));
+      return items;
+    }
+    // Inline table { key = val, ... }
+    if (val.startsWith('{') && val.endsWith('}')) {
+      const inner = val.slice(1, -1).trim();
+      const obj = {};
+      if (!inner) return obj;
+      const parts = inner.split(',');
+      for (const part of parts) {
+        const eq = part.indexOf('=');
+        if (eq !== -1) {
+          const k = part.slice(0, eq).trim().replace(/^"|"$/g, '');
+          obj[k] = parseTOMLValue(part.slice(eq + 1).trim());
+        }
+      }
+      return obj;
+    }
+    return val;
+  }
+
+  // ─── UV Commands ────────────────────────────────────────────
+  function findAllPyprojectTomls() {
+    const results = {};
+    for (const [path, entry] of vfs.entries()) {
+      if (entry.type === 'file' && path.endsWith('pyproject.toml')) {
+        results[path] = entry.content;
+      }
+    }
+    return results;
+  }
+
+  function findWorkspaceMembers() {
+    // Find member pyproject.toml files (not the root one)
+    const all = findAllPyprojectTomls();
+    const members = {};
+    for (const [path, content] of Object.entries(all)) {
+      if (path !== 'pyproject.toml') {
+        members[path] = parseTOML(content);
+      }
+    }
+    return members;
+  }
+
+  function findWorkspaceSrcPaths() {
+    // Find src/ directories for workspace members
+    const paths = [];
+    const allFiles = vfsGetAllFiles();
+    const srcDirs = new Set();
+    for (const filePath of Object.keys(allFiles)) {
+      // Match patterns like libs/shared/src/shared/__init__.py or apps/myapp/src/myapp/__init__.py
+      const m = filePath.match(/^(.+\/src)\//);
+      if (m) srcDirs.add('/' + m[1]);
+    }
+    return Array.from(srcDirs);
+  }
+
+  async function handleUvCommand(cmd) {
+    const parts = cmd.split(/\s+/);
+    const subCmd = parts[1];
+
+    try {
+      switch (subCmd) {
+        case 'sync': {
+          termWrite('\x1b[36mResolving workspace...\x1b[0m\r\n');
+
+          // Parse root pyproject.toml
+          const rootToml = vfsGet('pyproject.toml');
+          if (!rootToml || rootToml.type !== 'file') {
+            termWrite('\x1b[31mNo pyproject.toml found in workspace root\x1b[0m\r\n');
+            break;
+          }
+          const root = parseTOML(rootToml.content);
+
+          // Find workspace members
+          const members = findWorkspaceMembers();
+          const memberNames = Object.entries(members)
+            .map(([p, m]) => m.project?.name || p.split('/').slice(-2, -1)[0])
+            .filter(Boolean);
+
+          termWrite(`\x1b[90m  Workspace: ${root.project?.name || 'unknown'}\x1b[0m\r\n`);
+          if (memberNames.length > 0) {
+            termWrite(`\x1b[90m  Members: ${memberNames.join(', ')}\x1b[0m\r\n`);
+          }
+
+          // Collect third-party deps from dependency-groups
+          const depGroups = root['dependency-groups'] || {};
+          const allDeps = [];
+          // Native/compiled packages that cannot run in the browser (no pure-Python wheel)
+          const nativeSkipList = new Set([
+            'ruff', 'ty', 'pre-commit', 'import-linter', 'mypy', 'black',
+            'pyright', 'pylint', 'isort', 'flake8', 'bandit', 'safety',
+            'uvicorn', 'gunicorn', 'uvloop', 'watchdog', 'psutil',
+          ]);
+          const skippedDeps = [];
+
+          for (const [group, deps] of Object.entries(depGroups)) {
+            if (Array.isArray(deps)) {
+              for (const dep of deps) {
+                const depName = typeof dep === 'string' ? dep.split(/[>=<\[]/)[0].trim() : '';
+                if (!depName || memberNames.includes(depName)) continue;
+                if (nativeSkipList.has(depName)) {
+                  skippedDeps.push(depName);
+                } else {
+                  allDeps.push(depName);
+                }
+              }
+            }
+          }
+
+          // Also collect root project.dependencies
+          const rootDeps = root.project?.dependencies || [];
+          for (const dep of rootDeps) {
+            const depName = typeof dep === 'string' ? dep.split(/[>=<\[]/)[0].trim() : '';
+            if (!depName || memberNames.includes(depName) || allDeps.includes(depName)) continue;
+            if (nativeSkipList.has(depName)) {
+              skippedDeps.push(depName);
+            } else {
+              allDeps.push(depName);
+            }
+          }
+
+          // Show skipped packages
+          if (skippedDeps.length > 0) {
+            termWrite(`\x1b[33mSkipping ${skippedDeps.length} native package(s) (no WASM support):\x1b[0m\r\n`);
+            termWrite(`\x1b[90m  ${skippedDeps.join(', ')}\x1b[0m\r\n`);
+          }
+
+          // Install third-party deps via micropip
+          if (allDeps.length > 0) {
+            termWrite(`\x1b[36mInstalling ${allDeps.length} package(s)...\x1b[0m\r\n`);
+            for (const dep of allDeps) {
+              termWrite(`\x1b[90m  → ${dep}\x1b[0m\r\n`);
+              try {
+                pyWorker.postMessage({ type: 'install', data: { package: dep } });
+              } catch (e) {
+                termWrite(`\x1b[33m  ⚠ ${dep}: ${e.message}\x1b[0m\r\n`);
+              }
+            }
+            // Brief wait for installations to process
+            await new Promise(r => setTimeout(r, 500));
+          } else {
+            termWrite('\x1b[90m  No third-party dependencies to install\x1b[0m\r\n');
+          }
+
+          // Configure sys.path for workspace src-layout imports
+          const srcPaths = findWorkspaceSrcPaths();
+          if (srcPaths.length > 0) {
+            termWrite(`\x1b[36mConfiguring workspace paths...\x1b[0m\r\n`);
+            for (const p of srcPaths) {
+              termWrite(`\x1b[90m  → ${p}\x1b[0m\r\n`);
+            }
+            syncFSToWorker();
+            pyWorker.postMessage({ type: 'configurePaths', data: { paths: srcPaths } });
+          }
+
+          termWrite('\x1b[32m✓ Workspace synced\x1b[0m\r\n');
+          break;
+        }
+
+        case 'run': {
+          // uv run --package <pkg> <entry> OR uv run <file.py>
+          if (parts[2] === '--package' && parts[3] && parts[4]) {
+            const pkgName = parts[3];
+            const entryName = parts[4];
+
+            // Find the member's pyproject.toml
+            const members = findWorkspaceMembers();
+            let entrypoint = null;
+
+            for (const [path, parsed] of Object.entries(members)) {
+              if (parsed.project?.name === pkgName) {
+                const scripts = parsed.project?.scripts || {};
+                entrypoint = scripts[entryName];
+                break;
+              }
+            }
+
+            if (entrypoint) {
+              termWrite(`\x1b[90m$ uv run --package ${pkgName} ${entryName}\x1b[0m\r\n`);
+              termWrite(`\x1b[90m  → ${entrypoint}\x1b[0m\r\n`);
+              syncFSToWorker();
+              pyWorker.postMessage({ type: 'runEntrypoint', data: { entrypoint } });
+            } else {
+              termWrite(`\x1b[31mNo script '${entryName}' found in package '${pkgName}'\x1b[0m\r\n`);
+              // List available scripts
+              for (const [path, parsed] of Object.entries(members)) {
+                const scripts = parsed.project?.scripts;
+                if (scripts && Object.keys(scripts).length > 0) {
+                  termWrite(`\x1b[90m  ${parsed.project?.name}: ${Object.keys(scripts).join(', ')}\x1b[0m\r\n`);
+                }
+              }
+            }
+          } else if (parts[2]) {
+            // uv run <file.py> — just run as python
+            const filename = parts.slice(2).join(' ');
+            runPython(filename);
+            return; // runPython handles prompt
+          } else {
+            termWrite('\x1b[33mUsage: uv run <file.py> or uv run --package <pkg> <script>\x1b[0m\r\n');
+          }
+          break;
+        }
+
+        case 'pip': {
+          // uv pip install <pkg>
+          if (parts[2] === 'install' && parts[3]) {
+            const pkg = parts.slice(3).join(' ');
+            termWrite(`\x1b[36mInstalling ${pkg}...\x1b[0m\r\n`);
+            pyWorker.postMessage({ type: 'install', data: { package: pkg } });
+            state.installedPackages.push(pkg);
+            renderInstalledPackages();
+          } else {
+            termWrite('\x1b[33mUsage: uv pip install <package>\x1b[0m\r\n');
+          }
+          break;
+        }
+
+        default:
+          termWrite(`\x1b[33mUnknown uv command: ${subCmd}\x1b[0m\r\n`);
+          termWrite('\x1b[90mAvailable: sync, run, pip install\x1b[0m\r\n');
+      }
+    } catch (err) {
+      termWrite(`\x1b[31muv error: ${err.message}\x1b[0m\r\n`);
+    }
+    termWritePrompt();
+  }
+
+  // ─── Clone Repo Orchestration ───────────────────────────
+  async function cloneRepo(url) {
+    const overlay = $('#clone-overlay');
+    const statusEl = $('#clone-overlay-status');
+
+    // Show overlay
+    overlay.classList.remove('hidden');
+    statusEl.textContent = 'Connecting...';
+
+    // Show in terminal
+    dom.panel.classList.remove('collapsed');
+    termWrite(`\x1b[90m$ git clone ${url}\x1b[0m\r\n`);
+    termWrite('\x1b[33mCloning repository...\x1b[0m\r\n');
+
+    try {
+      await GitModule.clone(url, (progress) => {
+        const msg = progress.phase || 'Working...';
+        const detail = progress.loaded
+          ? ` (${progress.loaded}${progress.total ? '/' + progress.total : ''} objects)`
+          : '';
+        statusEl.textContent = msg + detail;
+        termWrite(`\x1b[90m  ${msg}${detail}\x1b[0m\r\n`);
+      });
+
+      // Sync cloned files from git FS to VFS
+      vfs.clear();
+      await GitModule.syncGitFSToVfs(vfsSet, () => vfs.clear());
+
+      // Close all open tabs
+      state.openTabs.forEach(t => {
+        const m = editorModels.get(t.path);
+        if (m) m.dispose();
+        editorModels.delete(t.path);
+      });
+      state.openTabs = [];
+      state.activeTab = null;
+
+      // Refresh everything
+      renderFileTree();
+      renderTabs();
+      updateWelcomeView();
+      syncFSToWorker();
+      await refreshGitStatus();
+
+      const branch = await GitModule.currentBranch();
+      termWrite(`\x1b[32m✓ Cloned into workspace (branch: ${branch})\x1b[0m\r\n`);
+      showNotification('Repository cloned successfully', 'success');
+    } catch (err) {
+      termWrite(`\x1b[31m✗ Clone failed: ${err.message}\x1b[0m\r\n`);
+      showNotification(`Clone failed: ${err.message}`, 'error');
+    } finally {
+      overlay.classList.add('hidden');
+      termWritePrompt();
+    }
+  }
+
   // ─── Git Terminal Commands ──────────────────────────────
   async function handleGitCommand(cmd) {
+    const parts = cmd.split(/\s+/);
+    const subCmd = parts[1];
+
+    // Clone does not require git to already be initialized
+    if (subCmd === 'clone') {
+      const url = parts[2];
+      if (!url) {
+        termWrite('\x1b[33mUsage: git clone <url>\x1b[0m\r\n');
+        termWritePrompt();
+      } else {
+        await cloneRepo(url);
+      }
+      return;
+    }
+
     if (!GitModule.isReady()) {
       termWrite('\x1b[31mGit is not initialized yet.\x1b[0m\r\n');
       termWritePrompt();
       return;
     }
-
-    const parts = cmd.split(/\s+/);
-    const subCmd = parts[1];
 
     try {
       switch (subCmd) {
@@ -1166,7 +1590,7 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
 
         default:
           termWrite(`\x1b[33mUnknown git command: ${subCmd}\x1b[0m\r\n`);
-          termWrite('\x1b[90mAvailable: status, add, commit, log, branch, checkout, diff\x1b[0m\r\n');
+          termWrite('\x1b[90mAvailable: clone, status, add, commit, log, branch, checkout, diff\x1b[0m\r\n');
       }
     } catch (err) {
       termWrite(`\x1b[31mGit error: ${err.message}\x1b[0m\r\n`);
@@ -1496,6 +1920,13 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
     });
 
     $('#btn-welcome-new').addEventListener('click', () => promptNewFile(''));
+
+    $('#btn-welcome-clone').addEventListener('click', () => {
+      const url = prompt('Enter a Git repository URL:', 'https://github.com/user/repo');
+      if (url && url.trim()) {
+        cloneRepo(url.trim());
+      }
+    });
 
     $('#btn-welcome-run').addEventListener('click', () => {
       runPython('main.py');
@@ -1880,11 +2311,22 @@ This is a sample Python project to demonstrate the **PyCode** browser IDE.
     // Initialize Pyodide worker
     initPyodideWorker();
 
-    // Initialize Git
-    const gitOk = await GitModule.init(vfsGetAllFiles);
-    if (gitOk) {
-      await refreshGitStatus();
-      termWrite('\x1b[32m✓ Git initialized\x1b[0m\r\n');
+    // Check for ?repo= URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const repoUrl = urlParams.get('repo');
+
+    if (repoUrl) {
+      // Clone from URL param — skip default VFS init git
+      termWrite('\x1b[36mRepository URL detected, cloning...\x1b[0m\r\n');
+      // Give Monaco and terminal a moment to render, then clone
+      setTimeout(() => cloneRepo(repoUrl), 300);
+    } else {
+      // Normal init — set up git with existing VFS files
+      const gitOk = await GitModule.init(vfsGetAllFiles);
+      if (gitOk) {
+        await refreshGitStatus();
+        termWrite('\x1b[32m✓ Git initialized\x1b[0m\r\n');
+      }
     }
 
     // Update welcome view

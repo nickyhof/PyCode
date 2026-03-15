@@ -210,6 +210,10 @@
                 <span class="codicon codicon-add"></span>
                 Create a new Python file
               </button>
+              <button class="welcome-btn" id="btn-welcome-clone">
+                <span class="codicon codicon-repo-clone"></span>
+                Clone a Repository
+              </button>
               <button class="welcome-btn" id="btn-welcome-run">
                 <span class="codicon codicon-play"></span>
                 Run main.py
@@ -286,11 +290,21 @@
     <button class="ctx-item" data-action="delete"><span class="codicon codicon-trash"></span> Delete</button>
   </div>
 
+  <!-- Clone Progress Overlay -->
+  <div id="clone-overlay" class="clone-overlay hidden">
+    <div class="clone-overlay-content">
+      <span class="codicon codicon-loading codicon-modifier-spin clone-spinner"></span>
+      <div class="clone-overlay-title">Cloning Repository</div>
+      <div id="clone-overlay-status" class="clone-overlay-status">Connecting...</div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@isomorphic-git/lightning-fs@4.6.0/dist/lightning-fs.min.js"></script>
   <script src="https://unpkg.com/isomorphic-git@1.27.1"></script>
+  <script src="https://unpkg.com/isomorphic-git@1.27.1/http/web/index.umd.js"></script>
   <script src="git.js"></script>
   <script src="app.js"></script>
 </body>

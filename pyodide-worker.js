@@ -129,5 +129,53 @@ if '' not in sys.path:
         self.postMessage({ type: 'repl-done', success: false });
       }
       break;
+
+    case 'configurePaths':
+      // Add directories to sys.path for workspace imports
+      if (!isReady) return;
+      try {
+        const paths = data.paths || [];
+        const pathsJson = JSON.stringify(paths);
+        await pyodide.runPythonAsync(`
+import sys, json
+_new_paths = json.loads('${pathsJson}')
+for _p in _new_paths:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+`);
+        self.postMessage({ type: 'stdout', data: `Configured ${paths.length} workspace path(s)` });
+        self.postMessage({ type: 'paths-done', success: true });
+      } catch (err) {
+        self.postMessage({ type: 'stderr', data: 'Failed to configure paths: ' + err.message });
+        self.postMessage({ type: 'paths-done', success: false });
+      }
+      break;
+
+    case 'runEntrypoint':
+      // Run a module:function entrypoint (e.g. "myapp:main")
+      if (!isReady) {
+        self.postMessage({ type: 'stderr', data: 'Python is still loading...' });
+        return;
+      }
+      syncVirtualFS();
+      pyodide.FS.chdir('/');
+      try {
+        const entry = data.entrypoint; // "myapp:main"
+        const [mod, func] = entry.split(':');
+        await pyodide.runPythonAsync(`
+import sys
+if '/' not in sys.path:
+    sys.path.insert(0, '/')
+if '' not in sys.path:
+    sys.path.insert(0, '')
+from ${mod} import ${func}
+${func}()
+`);
+        self.postMessage({ type: 'done', success: true });
+      } catch (err) {
+        self.postMessage({ type: 'stderr', data: err.message });
+        self.postMessage({ type: 'done', success: false });
+      }
+      break;
   }
 };

@@ -10,6 +10,7 @@ const GitModule = (function () {
   let pfs = null;      // promisified fs
   let gitReady = false;
   const dir = '/repo';
+  const corsProxy = 'https://cors.isomorphic-git.org';
   const author = { name: 'PyCode User', email: 'user@pycode.dev' };
 
   // ─── Initialization ──────────────────────────────────────
@@ -61,6 +62,65 @@ const GitModule = (function () {
 
   function isReady() {
     return gitReady;
+  }
+
+  // ─── Clone ──────────────────────────────────────────────
+
+  async function clearRepo() {
+    // Recursively delete everything under /repo
+    async function rmrf(path) {
+      try {
+        const entries = await pfs.readdir(path);
+        for (const entry of entries) {
+          const full = path + '/' + entry;
+          try {
+            const stat = await pfs.stat(full);
+            if (stat.isDirectory()) {
+              await rmrf(full);
+            } else {
+              await pfs.unlink(full);
+            }
+          } catch (e) { /* skip */ }
+        }
+        if (path !== dir) await pfs.rmdir(path);
+      } catch (e) { /* skip */ }
+    }
+    await rmrf(dir);
+  }
+
+  async function clone(url, onProgress) {
+    try {
+      if (!fs) {
+        fs = new LightningFS('pycode-fs');
+        pfs = fs.promises;
+      }
+
+      // Wipe existing repo
+      if (onProgress) onProgress({ phase: 'Clearing workspace...' });
+      await clearRepo();
+
+      // Ensure dir exists
+      try { await pfs.mkdir(dir); } catch (e) { /* exists */ }
+
+      if (onProgress) onProgress({ phase: `Cloning ${url}...` });
+
+      await git.clone({
+        fs,
+        http: GitHttp,
+        dir,
+        url,
+        corsProxy,
+        singleBranch: true,
+        depth: 1,
+        onProgress: onProgress || undefined,
+      });
+
+      gitReady = true;
+      return true;
+    } catch (err) {
+      console.error('Git clone failed:', err);
+      throw err;
+    }
   }
 
   // ─── Helpers ─────────────────────────────────────────────
@@ -348,6 +408,7 @@ const GitModule = (function () {
   return {
     init,
     isReady,
+    clone,
     syncVfsToGitFS,
     syncGitFSToVfs,
     status,
