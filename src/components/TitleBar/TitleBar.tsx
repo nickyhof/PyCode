@@ -1,4 +1,4 @@
-
+import { WorkspacePicker } from './WorkspacePicker';
 
 interface TitleBarProps {
   filename: string;
@@ -14,6 +14,7 @@ export function TitleBar({ filename, onToggleTerminal, onToggleCopilot }: TitleB
         <span className="app-title">PyCode</span>
       </div>
       <div className="titlebar-center">
+        <WorkspacePicker />
         <span className="titlebar-sep">—</span>
         <span id="titlebar-filename">{filename}</span>
       </div>
@@ -28,3 +29,4 @@ export function TitleBar({ filename, onToggleTerminal, onToggleCopilot }: TitleB
     </header>
   );
 }
+

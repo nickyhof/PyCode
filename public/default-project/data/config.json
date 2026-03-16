@@ -1,0 +1,9 @@
+{
+  "project": "PyCode Sample",
+  "version": "1.0.0",
+  "author": "You",
+  "settings": {
+    "debug": true,
+    "max_iterations": 1000
+  }
+}

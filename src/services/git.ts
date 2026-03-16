@@ -75,9 +75,25 @@ function formatDate(d: Date): string {
 export async function initGit(
   vfsGetAllFiles: () => Record<string, string>,
   fsName?: string,
+  forceClean?: boolean,
 ): Promise<boolean> {
   try {
     if (fsName) currentDbName = fsName;
+
+    // If forceClean, wipe the entire IndexedDB to start fresh
+    if (forceClean) {
+      try {
+        const dbs = await indexedDB.databases();
+        for (const db of dbs) {
+          if (db.name && db.name.includes(currentDbName)) {
+            indexedDB.deleteDatabase(db.name);
+          }
+        }
+      } catch { /* indexedDB.databases() not supported in all browsers */ }
+      // Small delay for DB cleanup
+      await new Promise(r => setTimeout(r, 50));
+    }
+
     fs = new LightningFS(currentDbName);
     pfs = fs.promises;
 
@@ -90,7 +106,7 @@ export async function initGit(
       needsInit = true;
     }
 
-    if (needsInit) {
+    if (needsInit || forceClean) {
       await git.init({ fs, dir });
       const files = vfsGetAllFiles();
       for (const [path, content] of Object.entries(files)) {
@@ -277,6 +293,31 @@ export async function gitUnstage(filepath: string): Promise<void> {
   } catch (e) {
     console.warn('Unstage failed:', e);
   }
+}
+
+/** Discard working-tree changes for a file (restore to HEAD version) */
+export async function gitDiscardFile(filepath: string): Promise<string | null> {
+  if (!gitReady || !fs || !pfs) return null;
+  try {
+    const commitOid = await git.resolveRef({ fs, dir, ref: 'HEAD' });
+    const { blob } = await git.readBlob({ fs, dir, oid: commitOid, filepath });
+    const content = new TextDecoder().decode(blob);
+    await writeFileRecursive(dir + '/' + filepath, content);
+    return content;
+  } catch {
+    // File didn't exist at HEAD — it's untracked, delete it
+    try {
+      await pfs.unlink(dir + '/' + filepath);
+    } catch { /* ignore */ }
+    return null;
+  }
+}
+
+/** Reset a file: unstage + discard changes */
+export async function gitResetFile(filepath: string): Promise<string | null> {
+  if (!gitReady || !fs) return null;
+  await gitUnstage(filepath);
+  return await gitDiscardFile(filepath);
 }
 
 // ─── Commit ──────────────────────────────────────────────

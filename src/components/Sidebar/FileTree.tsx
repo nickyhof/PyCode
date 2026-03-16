@@ -1,9 +1,6 @@
-/**
- * FileTree — recursive file explorer with context menus.
- */
-
 import { useState, useCallback, type MouseEvent } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useDialog } from '../Dialog/Dialog';
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from '../ContextMenu/ContextMenu';
 import type { TreeNode } from '../../services/vfs';
 
@@ -19,6 +16,7 @@ function fileIcon(path: string): { icon: string; color: string } {
     html: { icon: 'codicon-code',          color: 'file-text' },
     css:  { icon: 'codicon-symbol-color',  color: 'file-python' },
     txt:  { icon: 'codicon-file-text',     color: 'file-text' },
+    bazel:{ icon: 'codicon-flame',          color: 'file-json' },
     toml: { icon: 'codicon-settings',      color: 'file-default' },
   };
   return map[ext] || { icon: 'codicon-file', color: 'file-default' };
@@ -101,6 +99,7 @@ function TreeItem({ node, depth, onContextMenu }: TreeItemProps) {
 
 export function FileTree() {
   const { vfs, dispatch } = useApp();
+  const { prompt, confirm } = useDialog();
   const tree = vfs.tree();
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: TreeNode } | null>(null);
 
@@ -111,41 +110,42 @@ export function FileTree() {
 
   const closeMenu = useCallback(() => setCtxMenu(null), []);
 
-  const handleRename = useCallback(() => {
+  const handleRename = useCallback(async () => {
     if (!ctxMenu) return;
-    const oldPath = ctxMenu.node.path;
-    const newName = prompt('Rename to:', ctxMenu.node.name);
-    if (!newName || newName === ctxMenu.node.name) { closeMenu(); return; }
-
+    const node = ctxMenu.node;
+    closeMenu();
+    const newName = await prompt({ title: 'Rename', defaultValue: node.name, placeholder: 'Enter new name...' });
+    if (!newName || newName === node.name) return;
+    const oldPath = node.path;
     const parentPath = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
     const newPath = parentPath ? parentPath + '/' + newName : newName;
     vfs.rename(oldPath, newPath);
     dispatch({ type: 'VFS_CHANGED' });
     dispatch({ type: 'RENAME_TAB', oldPath, newPath });
-    closeMenu();
-  }, [ctxMenu, vfs, dispatch, closeMenu]);
+  }, [ctxMenu, vfs, dispatch, closeMenu, prompt]);
 
-  const handleDelete = useCallback(() => {
+  const handleDelete = useCallback(async () => {
     if (!ctxMenu) return;
-    const path = ctxMenu.node.path;
-    if (!confirm(`Delete "${ctxMenu.node.name}"?`)) { closeMenu(); return; }
-    vfs.delete(path);
-    dispatch({ type: 'VFS_CHANGED' });
-    dispatch({ type: 'CLOSE_TAB', path });
+    const node = ctxMenu.node;
     closeMenu();
-  }, [ctxMenu, vfs, dispatch, closeMenu]);
+    const ok = await confirm({ title: 'Delete', message: `Are you sure you want to delete "${node.name}"?`, danger: true });
+    if (!ok) return;
+    vfs.delete(node.path);
+    dispatch({ type: 'VFS_CHANGED' });
+    dispatch({ type: 'CLOSE_TAB', path: node.path });
+  }, [ctxMenu, vfs, dispatch, closeMenu, confirm]);
 
-  const handleNewFile = useCallback(() => {
+  const handleNewFile = useCallback(async () => {
     if (!ctxMenu) return;
     const base = ctxMenu.node.type === 'directory' ? ctxMenu.node.path : '';
-    const name = prompt('New file name:');
-    if (!name) { closeMenu(); return; }
+    closeMenu();
+    const name = await prompt({ title: 'New File', placeholder: 'Enter file name...' });
+    if (!name) return;
     const path = base ? base + '/' + name : name;
     vfs.set(path, '');
     dispatch({ type: 'VFS_CHANGED' });
     dispatch({ type: 'OPEN_FILE', path });
-    closeMenu();
-  }, [ctxMenu, vfs, dispatch, closeMenu]);
+  }, [ctxMenu, vfs, dispatch, closeMenu, prompt]);
 
   const sortedRootChildren = Object.values(tree.children).sort((a, b) => {
     if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;

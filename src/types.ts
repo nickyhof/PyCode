@@ -70,7 +70,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: 14,
   tabSize: 4,
   wordWrap: true,
-  minimap: true,
+  minimap: false,
   gitUserName: '',
   gitUserEmail: '',
   githubPat: '',

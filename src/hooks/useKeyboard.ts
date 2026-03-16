@@ -1,12 +1,19 @@
-/**
- * useKeyboard — global keyboard shortcut handler.
- */
-
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import { useDialog } from '../components/Dialog/Dialog';
+import { syncFilesToWorker, runPythonFile } from '../services/pyodide';
 
 export function useKeyboard() {
   const { state, dispatch, vfs } = useApp();
+  const { prompt } = useDialog();
+
+  const handleNewFile = useCallback(async () => {
+    const name = await prompt({ title: 'New File', defaultValue: 'untitled.py', placeholder: 'Enter file name...' });
+    if (!name) return;
+    vfs.set(name, '');
+    dispatch({ type: 'VFS_CHANGED' });
+    dispatch({ type: 'OPEN_FILE', path: name });
+  }, [prompt, vfs, dispatch]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -15,18 +22,17 @@ export function useKeyboard() {
       // Ctrl+N — New File
       if (ctrl && e.key === 'n') {
         e.preventDefault();
-        const name = prompt('New file name:', 'untitled.py');
-        if (!name) return;
-        vfs.set(name, '');
-        dispatch({ type: 'VFS_CHANGED' });
-        dispatch({ type: 'OPEN_FILE', path: name });
+        handleNewFile();
       }
 
-      // Ctrl+S — Mark file as saved (clear dirty flag)
+      // Ctrl+S — Save file (persist to VFS and clear dirty flag)
       if (ctrl && e.key === 's') {
         e.preventDefault();
         if (state.activeTab) {
+          // Content is already synced to VFS via onChange handler,
+          // just mark the tab as saved
           dispatch({ type: 'MARK_DIRTY', path: state.activeTab, dirty: false });
+          dispatch({ type: 'VFS_CHANGED' });
         }
       }
 
@@ -50,10 +56,19 @@ export function useKeyboard() {
         dispatch({ type: 'TOGGLE_SIDEBAR' });
       }
 
-      // F5 — Run (placeholder)
+      // F5 — Run active Python file
       if (e.key === 'F5') {
         e.preventDefault();
-        // Could trigger python execution
+        const file = state.activeTab || 'main.py';
+        if (!state.pyodideReady) return;
+        // Ensure terminal is visible
+        if (state.panelCollapsed) {
+          dispatch({ type: 'TOGGLE_PANEL' });
+        }
+        // Sync VFS files and run
+        const files = vfs.getAllFiles();
+        syncFilesToWorker(files);
+        setTimeout(() => runPythonFile(file), 50);
       }
 
       // Ctrl+Shift+E — Explorer
@@ -77,5 +92,5 @@ export function useKeyboard() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [state, dispatch, vfs]);
+  }, [state, dispatch, vfs, handleNewFile]);
 }

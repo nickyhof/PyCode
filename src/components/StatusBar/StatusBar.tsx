@@ -26,7 +26,7 @@ export function StatusBar() {
           <span>{state.pyodideReady ? 'Python Ready' : 'Loading Python...'}</span>
         </span>
         <span className="status-item" id="status-language">{lang}</span>
-        <span className="status-item" id="status-cursor">Ln 1, Col 1</span>
+        <span className="status-item" id="status-cursor">Ln {state.cursorLine}, Col {state.cursorCol}</span>
         <span className="status-item">UTF-8</span>
         <span className="status-item">Spaces: {state.settings.tabSize}</span>
       </div>

@@ -6,6 +6,8 @@ import { EditorArea } from './components/Editor/EditorArea';
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
 import { StatusBar } from './components/StatusBar/StatusBar';
 import { CopilotPanel } from './components/Copilot/CopilotPanel';
+import { NotificationProvider } from './components/Notification/Notification';
+import { DialogProvider } from './components/Dialog/Dialog';
 import { useResize } from './hooks/useResize';
 import { useKeyboard } from './hooks/useKeyboard';
 
@@ -96,7 +98,12 @@ function AppLayout() {
 export default function App() {
   return (
     <AppProvider>
-      <AppLayout />
+      <NotificationProvider>
+        <DialogProvider>
+          <AppLayout />
+        </DialogProvider>
+      </NotificationProvider>
     </AppProvider>
   );
 }
+

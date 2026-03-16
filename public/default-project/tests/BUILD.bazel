@@ -1,0 +1,5 @@
+py_test(
+    name = "test_mathutils",
+    srcs = ["test_mathutils.py"],
+    deps = ["//lib:mathutils"],
+)

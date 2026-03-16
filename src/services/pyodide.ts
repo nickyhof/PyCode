@@ -11,7 +11,7 @@ let onMessage: PyodideMessageHandler | null = null;
  * Initialize the Pyodide web worker.
  */
 export function initPyodideWorker(messageHandler: PyodideMessageHandler): void {
-  worker = new Worker(new URL('../../public/pyodide-worker.js', import.meta.url));
+  worker = new Worker('/pyodide-worker.js');
   onMessage = messageHandler;
 
   worker.onmessage = (e: MessageEvent) => {
@@ -40,6 +40,14 @@ export function syncFilesToWorker(files: Record<string, string>): void {
  */
 export function runPythonFile(filename: string): void {
   postToWorker('run', { filename });
+}
+
+/**
+ * Emit a message to the terminal output stream (without going through the worker).
+ * Useful for showing "Running X..." messages from CodeLens commands.
+ */
+export function emitToTerminal(text: string): void {
+  if (onMessage) onMessage('stdout', text);
 }
 
 /**

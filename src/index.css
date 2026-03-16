@@ -91,6 +91,13 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+#root {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 button {
   background: none;
   border: none;
@@ -283,7 +290,8 @@ input:focus, select:focus {
 /* --- App Shell Layout --- */
 #app-shell {
   display: flex;
-  height: calc(100vh - var(--titlebar-height) - var(--statusbar-height));
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -851,7 +859,7 @@ kbd {
 }
 
 /* --- Status Bar --- */
-#status-bar {
+#statusbar {
   height: var(--statusbar-height);
   background: var(--bg-statusbar);
   display: flex;
@@ -900,9 +908,11 @@ kbd {
 .context-menu {
   position: fixed;
   min-width: 180px;
-  background: var(--bg-context-menu);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
+  background: rgba(37, 37, 38, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
   padding: 4px 0;
   box-shadow: var(--shadow-popup);
   z-index: 1000;
@@ -1039,27 +1049,50 @@ kbd {
 
 /* --- Settings --- */
 .settings-container {
-  padding: 12px;
+  padding: 0;
 }
 
 .setting-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-primary);
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  transition: background var(--transition-fast);
+}
+
+.setting-item:hover {
+  background: rgba(255,255,255,0.02);
 }
 
 .setting-label {
   font-size: var(--font-size);
   color: var(--fg-primary);
+  font-weight: 500;
+}
+
+.setting-desc {
+  font-size: var(--font-size-xs);
+  color: var(--fg-muted);
+  line-height: 1.4;
+  margin-top: -2px;
 }
 
 .setting-input {
-  width: 80px;
-  height: 26px;
+  width: 100%;
+  max-width: 180px;
+  height: 28px;
   font-size: var(--font-size-sm);
-  text-align: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--fg-primary);
+  padding: 4px 8px;
+  transition: border-color var(--transition-fast);
+}
+
+.setting-input:focus {
+  border-color: var(--border-focus);
 }
 
 /* --- Loading Spinner for Codicons --- */
@@ -1073,13 +1106,23 @@ kbd {
 }
 
 /* --- Notification Toast --- */
-.notification {
+#notification-container {
   position: fixed;
   bottom: calc(var(--statusbar-height) + 12px);
   right: 16px;
-  background: var(--bg-context-menu);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.notification {
+  background: rgba(37, 37, 38, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
   padding: 10px 16px;
   box-shadow: var(--shadow-popup);
   display: flex;
@@ -1087,9 +1130,9 @@ kbd {
   gap: 8px;
   font-size: var(--font-size);
   color: var(--fg-primary);
-  z-index: 2000;
   animation: slideIn 0.3s ease;
   max-width: 400px;
+  pointer-events: auto;
 }
 
 @keyframes slideIn {
@@ -1113,6 +1156,106 @@ kbd {
 .notification.info .codicon { color: var(--fg-accent); }
 .notification.success .codicon { color: var(--fg-success); }
 .notification.error .codicon { color: var(--fg-error); }
+
+/* --- Dialog (prompt replacement) --- */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dialog-box {
+  background: rgba(37, 37, 38, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 16px 20px;
+  min-width: 320px;
+  max-width: 420px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.dialog-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  margin-bottom: 12px;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  color: var(--fg-primary);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.dialog-input:focus {
+  border-color: var(--border-focus);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.dialog-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-primary);
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  color: var(--fg-primary);
+}
+
+.dialog-btn:hover {
+  background: var(--bg-hover);
+}
+
+.dialog-btn.ok {
+  background: var(--bg-badge);
+  border-color: var(--bg-badge);
+  color: #fff;
+}
+
+.dialog-btn.ok:hover {
+  opacity: 0.9;
+}
+
+.dialog-btn.danger {
+  background: #c53030;
+  border-color: #c53030;
+  color: #fff;
+}
+
+.dialog-btn.danger:hover {
+  background: #e53e3e;
+}
+
+.dialog-message {
+  font-size: 13px;
+  color: var(--fg-secondary);
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
 
 /* --- Activity Badge --- */
 .activity-badge {
@@ -1191,6 +1334,23 @@ kbd {
   border: 1px solid var(--border-primary);
   border-radius: 3px;
   transition: background var(--transition-fast), color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+/* --- Diff Editor Header --- */
+.diff-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  font-size: 12px;
+  color: var(--fg-primary);
+  min-height: 28px;
 }
 
 .git-action-btn:hover {
@@ -1679,16 +1839,29 @@ kbd {
 .settings-divider {
   height: 1px;
   background: var(--border-primary);
-  margin: 16px 0;
+  margin: 0;
 }
 
 .settings-section-title {
   font-size: 11px;
   font-weight: 600;
-  color: var(--fg-secondary);
+  color: var(--fg-accent);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0 0 12px;
+  letter-spacing: 0.8px;
+  margin: 0;
+  padding: 10px 16px 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-section-title::before {
+  content: '';
+  width: 3px;
+  height: 12px;
+  background: var(--fg-accent);
+  border-radius: 2px;
+  flex-shrink: 0;
 }
 
 /* Agent mode file edit blocks */
