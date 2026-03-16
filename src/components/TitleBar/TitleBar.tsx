@@ -4,9 +4,10 @@ interface TitleBarProps {
   filename: string;
   onToggleTerminal: () => void;
   onToggleCopilot: () => void;
+  onOpenPalette: () => void;
 }
 
-export function TitleBar({ filename, onToggleTerminal, onToggleCopilot }: TitleBarProps) {
+export function TitleBar({ filename, onToggleTerminal, onToggleCopilot, onOpenPalette }: TitleBarProps) {
   return (
     <header id="titlebar">
       <div className="titlebar-left">
@@ -19,6 +20,9 @@ export function TitleBar({ filename, onToggleTerminal, onToggleCopilot }: TitleB
         <span id="titlebar-filename">{filename}</span>
       </div>
       <div className="titlebar-right">
+        <button className="titlebar-btn" title="Command Palette (Ctrl+P)" onClick={onOpenPalette}>
+          <span className="codicon codicon-search" />
+        </button>
         <button className="titlebar-btn" title="Toggle Terminal" onClick={onToggleTerminal}>
           <span className="codicon codicon-terminal" />
         </button>
@@ -29,4 +33,3 @@ export function TitleBar({ filename, onToggleTerminal, onToggleCopilot }: TitleB
     </header>
   );
 }
-

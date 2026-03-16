@@ -1589,6 +1589,7 @@ kbd {
 .copilot-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border-primary);
@@ -1694,6 +1695,56 @@ kbd {
   line-height: 1.6;
   max-width: 95%;
   border: 1px solid var(--border-primary);
+}
+
+/* Message header with avatar + name */
+.copilot-msg-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.copilot-msg-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.copilot-msg-avatar.user {
+  background: var(--fg-accent);
+  color: #fff;
+}
+
+.copilot-msg-avatar.assistant {
+  background: rgba(139, 92, 246, 0.3);
+  color: #c4b5fd;
+}
+
+.copilot-msg-author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-bright);
+}
+
+/* Message body — rendered markdown */
+.copilot-msg-body {
+  font-size: 13px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.copilot-msg-body p {
+  margin: 0 0 8px;
+}
+
+.copilot-msg-body p:last-child {
+  margin-bottom: 0;
 }
 
 /* Markdown inside assistant messages */
@@ -2319,4 +2370,152 @@ kbd {
   color: var(--text-primary);
   border-color: var(--text-secondary);
   background: var(--bg-hover);
+}
+
+/* ─── Command Palette ───────────────────────────────────── */
+
+.cmd-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  padding-top: 60px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  animation: cmd-overlay-in 0.12s ease-out;
+}
+
+@keyframes cmd-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.cmd-palette {
+  width: 560px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  animation: cmd-slide-in 0.15s ease-out;
+}
+
+@keyframes cmd-slide-in {
+  from { transform: translateY(-12px) scale(0.97); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.cmd-palette-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cmd-palette-search-icon {
+  color: var(--text-secondary);
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.cmd-palette-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.cmd-palette-input::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.cmd-palette-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.cmd-palette-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cmd-palette-list::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 3px;
+}
+
+.cmd-palette-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-family: var(--font-ui);
+}
+
+.cmd-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: background 0.08s;
+}
+
+.cmd-palette-item:hover,
+.cmd-palette-item.selected {
+  background: var(--bg-hover);
+}
+
+.cmd-palette-item.selected {
+  background: rgba(0, 120, 212, 0.15);
+}
+
+.cmd-palette-item-icon {
+  color: var(--text-secondary);
+  font-size: 15px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.cmd-palette-item-label {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.cmd-palette-item-detail {
+  flex: 1;
+  text-align: right;
+  color: var(--text-secondary);
+  font-size: 11px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmd-palette-item-shortcut {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono);
 }

@@ -2,7 +2,9 @@
 
 A browser-only Python IDE with AI. No backend, no installation — just open it in a browser.
 
-![PyCode IDE](screenshot.png)
+![PyCode IDE](screenshot_1.png)
+
+![PyCode IDE](screenshot_2.png)
 
 ## Quick Start
 
@@ -25,6 +27,18 @@ To open a GitHub repo directly:
 ```
 http://localhost:5173?repo=https://github.com/user/repo
 ```
+
+## Features
+
+- **Monaco Editor** — Full VS Code editing experience with syntax highlighting, IntelliSense, and multi-tab support
+- **Jupyter Notebooks** — Native `.ipynb` editor with per-cell execution, markdown rendering, and cell management (add, delete, move, toggle type)
+- **Python Execution** — Run Python files and notebook cells via Pyodide (WebAssembly) — no server required
+- **In-Browser Git** — Clone, commit, push, pull, stage, diff — all powered by `isomorphic-git`
+- **Command Palette** — VS Code-style quick launcher for files and commands
+- **Built-in Terminal** — xterm.js terminal with `python`, `git`, `uv`, and `bazel` commands
+- **AI Copilot** — Chat and inline agent mode via GitHub Models API
+- **Workspaces** — Isolated environments persisted in IndexedDB
+- **Package Management** — Install PyPI packages via Pyodide's micropip
 
 ## Workspaces
 
@@ -59,11 +73,15 @@ git push / pull         Push commits / pull updates
 
 | Shortcut | Action |
 |----------|--------|
+| `Ctrl+P` | Command palette (file search) |
+| `Ctrl+Shift+P` | Command palette (commands) |
 | `Ctrl+N` | New file |
+| `Ctrl+J` | New notebook |
 | `Ctrl+S` | Save file |
 | `Ctrl+W` | Close tab |
 | `Ctrl+B` | Toggle sidebar |
 | `` Ctrl+` `` | Toggle terminal |
+| `F5` | Run active Python file |
 | `Ctrl+Shift+E` | Explorer panel |
 | `Ctrl+Shift+F` | Search panel |
 | `Ctrl+Shift+G` | Git panel |
@@ -97,14 +115,18 @@ src/
 │   ├── uv.ts                  # UV workspace analysis
 │   └── bazel.ts               # Bazel BUILD parser
 └── components/
-    ├── TitleBar/               # App branding + toggles
+    ├── TitleBar/               # App branding + workspace picker
     ├── ActivityBar/            # Sidebar navigation icons
     ├── Sidebar/                # Explorer, Search, Git, Settings
-    ├── Editor/                 # Monaco Editor + tabs
+    ├── Editor/                 # Monaco Editor, Notebook Editor, tabs
     ├── Terminal/               # xterm.js terminal
+    ├── CommandPalette/         # Ctrl+P / Ctrl+Shift+P launcher
     ├── Copilot/                # AI chat panel
     ├── StatusBar/              # Git branch, language, cursor
-    └── ContextMenu/            # Right-click menus
+    ├── Dialog/                 # Prompt and confirm modals
+    ├── Notification/           # Toast notifications
+    ├── ContextMenu/            # Right-click menus
+    └── shared/                 # Reusable UI primitives
 ```
 
 ## Tech Stack
@@ -116,7 +138,7 @@ src/
 [isomorphic-git](https://github.com/isomorphic-git/isomorphic-git) ·
 [LightningFS](https://github.com/isomorphic-git/lightning-fs)
 
-All dependencies bundled via npm.
+All dependencies bundled via npm. Zero backend required.
 
 ## Limitations
 

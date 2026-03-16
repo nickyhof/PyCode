@@ -2,12 +2,57 @@
  * CopilotPanel — full streaming chat with Ask/Agent modes.
  */
 
-import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo, type KeyboardEvent } from 'react';
 import { useApp } from '../../context/AppContext';
 import { streamChat, buildSystemPrompt, type CopilotMessage } from '../../services/copilot';
 
 interface CopilotPanelProps {
   onClose: () => void;
+}
+
+// ─── Lightweight Markdown → HTML renderer ──────────────
+
+function renderMarkdown(text: string): string {
+  // Escape HTML
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Fenced code blocks: ```lang\ncode\n```
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, _lang, code) => {
+    return `<pre><code>${code.replace(/\n$/, '')}</code></pre>`;
+  });
+
+  // Inline code: `code`
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+  // Bold: **text** or __text__
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+  // Italic: *text* or _text_
+  html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+
+  // Unordered lists: lines starting with - or *
+  html = html.replace(/^(\s*[-*])\s+(.+)$/gm, '<li>$2</li>');
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+
+  // Ordered lists: lines starting with 1. 2. etc
+  html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+
+  // Headers: ### heading
+  html = html.replace(/^### (.+)$/gm, '<strong style="font-size:13px;display:block;margin:8px 0 4px">$1</strong>');
+  html = html.replace(/^## (.+)$/gm, '<strong style="font-size:14px;display:block;margin:8px 0 4px">$1</strong>');
+  html = html.replace(/^# (.+)$/gm, '<strong style="font-size:15px;display:block;margin:10px 0 4px">$1</strong>');
+
+  // Paragraphs: double newlines
+  html = html.replace(/\n\n/g, '</p><p>');
+
+  // Single newlines (not inside pre) → <br>
+  html = html.replace(/(?<!<\/pre>|<\/li>|<\/ul>|<\/p>|<p>)\n(?!<pre|<ul|<li|<\/)/g, '<br/>');
+
+  return `<p>${html}</p>`;
 }
 
 export function CopilotPanel({ onClose }: CopilotPanelProps) {
@@ -132,6 +177,11 @@ export function CopilotPanel({ onClose }: CopilotPanelProps) {
     setStreamingContent('');
   }, []);
 
+  // Memoize rendered markdown for streaming content
+  const streamingHtml = useMemo(() => {
+    return streamingContent ? renderMarkdown(streamingContent) : '';
+  }, [streamingContent]);
+
   return (
     <aside id="copilot-panel">
       <div className="copilot-header">
@@ -159,47 +209,50 @@ export function CopilotPanel({ onClose }: CopilotPanelProps) {
         </div>
       </div>
 
-      <div className="copilot-messages" style={{ flex: 1, padding: 12, overflow: 'auto' }}>
+      <div className="copilot-messages">
         {messages.length === 0 && !streaming && (
-          <div style={{ textAlign: 'center', color: 'var(--fg-secondary)', padding: '40px 16px' }}>
-            <span className="codicon codicon-copilot" style={{ fontSize: 32, opacity: 0.4, display: 'block', marginBottom: 12 }} />
+          <div className="copilot-welcome">
+            <span className="codicon codicon-copilot copilot-welcome-icon" />
             How can I help you?<br />
-            <span style={{ fontSize: 11 }}>Ask about your code, or switch to <strong>Agent</strong> mode to edit files.</span>
+            <span className="copilot-welcome-hint">Ask about your code, or switch to <strong>Agent</strong> mode to edit files.</span>
           </div>
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} className={`copilot-message ${msg.role}`}>
-            <div className="copilot-message-header">
-              <span className={`codicon ${msg.role === 'user' ? 'codicon-account' : 'codicon-copilot'}`} />
-              <span style={{ fontWeight: 600, fontSize: 11 }}>{msg.role === 'user' ? 'You' : 'Copilot'}</span>
+          <div key={i} className={`copilot-msg copilot-msg-${msg.role}`}>
+            <div className="copilot-msg-header">
+              <span className={`copilot-msg-avatar ${msg.role === 'user' ? 'user' : 'assistant'}`}>
+                <span className={`codicon ${msg.role === 'user' ? 'codicon-account' : 'codicon-copilot'}`} />
+              </span>
+              <span className="copilot-msg-author">{msg.role === 'user' ? 'You' : 'Copilot'}</span>
             </div>
             <div
-              className="copilot-message-content"
-              style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5 }}
-            >
-              {msg.content}
-            </div>
+              className="copilot-msg-body"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+            />
           </div>
         ))}
 
         {streaming && streamingContent && (
-          <div className="copilot-message assistant">
-            <div className="copilot-message-header">
-              <span className="codicon codicon-copilot" />
-              <span style={{ fontWeight: 600, fontSize: 11 }}>Copilot</span>
-              <span className="codicon codicon-loading codicon-modifier-spin" style={{ marginLeft: 4 }} />
+          <div className="copilot-msg copilot-msg-assistant">
+            <div className="copilot-msg-header">
+              <span className="copilot-msg-avatar assistant">
+                <span className="codicon codicon-copilot" />
+              </span>
+              <span className="copilot-msg-author">Copilot</span>
+              <span className="codicon codicon-loading codicon-modifier-spin" style={{ marginLeft: 4, fontSize: 12 }} />
             </div>
-            <div className="copilot-message-content" style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5 }}>
-              {streamingContent}
-            </div>
+            <div
+              className="copilot-msg-body"
+              dangerouslySetInnerHTML={{ __html: streamingHtml }}
+            />
           </div>
         )}
 
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="copilot-input-area" style={{ padding: '8px 12px', borderTop: '1px solid var(--border-primary)' }}>
+      <div className="copilot-input-area">
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <textarea
             className="copilot-input"
@@ -209,24 +262,11 @@ export function CopilotPanel({ onClose }: CopilotPanelProps) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={streaming}
-            style={{
-              flex: 1, resize: 'none',
-              background: 'var(--bg-input)', border: '1px solid var(--border-primary)',
-              borderRadius: 6, padding: '6px 10px',
-              color: 'var(--fg-primary)', fontFamily: 'var(--font-ui)', fontSize: 13,
-              outline: 'none',
-            }}
           />
           <button
             className="copilot-send-btn"
             onClick={handleSend}
             disabled={streaming || !input.trim()}
-            style={{
-              width: 32, height: 32, borderRadius: '50%',
-              background: streaming || !input.trim() ? 'var(--bg-tertiary)' : 'var(--bg-button)',
-              color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: 'none', cursor: streaming ? 'not-allowed' : 'pointer',
-            }}
           >
             <span className="codicon codicon-send" />
           </button>
@@ -235,3 +275,4 @@ export function CopilotPanel({ onClose }: CopilotPanelProps) {
     </aside>
   );
 }
+

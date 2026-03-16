@@ -8,11 +8,13 @@ import { StatusBar } from './components/StatusBar/StatusBar';
 import { CopilotPanel } from './components/Copilot/CopilotPanel';
 import { NotificationProvider } from './components/Notification/Notification';
 import { DialogProvider } from './components/Dialog/Dialog';
+import { CommandPaletteProvider, useCommandPalette } from './components/CommandPalette/CommandPalette';
 import { useResize } from './hooks/useResize';
 import { useKeyboard } from './hooks/useKeyboard';
 
 function AppLayout() {
   const { state, dispatch } = useApp();
+  const { open: openPalette } = useCommandPalette();
 
   // Drag-to-resize hooks
   useResize({
@@ -54,6 +56,7 @@ function AppLayout() {
         filename={activeFilename}
         onToggleTerminal={() => dispatch({ type: 'TOGGLE_PANEL' })}
         onToggleCopilot={() => dispatch({ type: 'TOGGLE_COPILOT' })}
+        onOpenPalette={openPalette}
       />
 
       <div id="app-shell">
@@ -100,7 +103,9 @@ export default function App() {
     <AppProvider>
       <NotificationProvider>
         <DialogProvider>
-          <AppLayout />
+          <CommandPaletteProvider>
+            <AppLayout />
+          </CommandPaletteProvider>
         </DialogProvider>
       </NotificationProvider>
     </AppProvider>
