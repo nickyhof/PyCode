@@ -3,10 +3,25 @@ import { Editor, DiffEditor, loader } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useApp } from '../../context/AppContext';
 import { syncFilesToWorker, runPythonFile, emitToTerminal, runPythonCode } from '../../services/pyodide';
+import { NotebookEditor } from './NotebookEditor';
 
 // Configure Monaco to use our bundled version
 import * as monaco from 'monaco-editor';
 loader.config({ monaco });
+
+// Define themes at module level so they're available for DiffEditor too
+monaco.editor.defineTheme('pycode-dark', {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#1e1e1e',
+    'editor.foreground': '#d4d4d4',
+    'editorCursor.foreground': '#569cd6',
+    'editor.lineHighlightBackground': '#2a2d2e',
+    'editor.selectionBackground': '#264f78',
+  },
+});
 
 // ─── Python Run CodeLens ────────────────────────────────
 
@@ -200,7 +215,7 @@ function getFileIcon(path: string): string {
     json: 'codicon-json', md: 'codicon-markdown',
     html: 'codicon-code', css: 'codicon-symbol-color',
     txt: 'codicon-file-text', toml: 'codicon-settings',
-    bazel: 'codicon-flame',
+    bazel: 'codicon-flame', ipynb: 'codicon-file',
   };
   return icons[ext] || 'codicon-file';
 }
@@ -215,6 +230,7 @@ export function EditorArea() {
   const fileNode = activeFile ? vfs.get(activeFile) : null;
   const content = fileNode?.type === 'file' ? (fileNode.content ?? '') : '';
   const language = activeFile ? getLanguage(activeFile) : 'plaintext';
+  const isNotebook = activeFile?.endsWith('.ipynb') ?? false;
 
   // Register CodeLens provider once
   useEffect(() => {
@@ -232,19 +248,7 @@ export function EditorArea() {
       dispatch({ type: 'SET_CURSOR', line: e.position.lineNumber, col: e.position.column });
     });
 
-    // Define PyCode theme
-    monaco.editor.defineTheme('pycode-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [],
-      colors: {
-        'editor.background': '#1e1e1e',
-        'editor.foreground': '#d4d4d4',
-        'editorCursor.foreground': '#569cd6',
-        'editor.lineHighlightBackground': '#2a2d2e',
-        'editor.selectionBackground': '#264f78',
-      },
-    });
+    // Apply PyCode theme
     editor.updateOptions({ theme: 'pycode-dark' });
   }, [dispatch]);
 
@@ -272,7 +276,6 @@ export function EditorArea() {
             >
               <span className={`tab-icon codicon ${getFileIcon(tab.path)}`} />
               <span className="tab-label">{tab.path.split('/').pop()}</span>
-              {tab.isDirty && <span className="tab-dirty">●</span>}
               <button
                 className="tab-close"
                 onClick={(e) => {
@@ -298,6 +301,7 @@ export function EditorArea() {
             <p className="welcome-subtitle">Browser-based Python IDE</p>
             <div className="welcome-shortcuts">
               <div className="shortcut"><kbd>Ctrl+N</kbd> New File</div>
+              <div className="shortcut"><kbd>Ctrl+J</kbd> New Notebook</div>
               <div className="shortcut"><kbd>F5</kbd> Run Code</div>
               <div className="shortcut"><kbd>Ctrl+`</kbd> Toggle Terminal</div>
             </div>
@@ -341,8 +345,15 @@ export function EditorArea() {
         </div>
       )}
 
+      {/* Notebook Editor */}
+      {state.tabs.length > 0 && !state.diffView && isNotebook && activeFile && (
+        <div id="editor-container" className="visible">
+          <NotebookEditor filePath={activeFile} />
+        </div>
+      )}
+
       {/* Monaco Editor */}
-      {state.tabs.length > 0 && !state.diffView && (
+      {state.tabs.length > 0 && !state.diffView && !isNotebook && (
         <div id="editor-container" className="visible">
           <Editor
             height="100%"

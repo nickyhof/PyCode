@@ -8,16 +8,17 @@ import type { TreeNode } from '../../services/vfs';
 function fileIcon(path: string): { icon: string; color: string } {
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
   const map: Record<string, { icon: string; color: string }> = {
-    py:   { icon: 'codicon-symbol-method', color: 'file-python' },
-    js:   { icon: 'codicon-symbol-event',  color: 'file-python' },
-    ts:   { icon: 'codicon-symbol-event',  color: 'file-python' },
-    json: { icon: 'codicon-json',          color: 'file-json' },
-    md:   { icon: 'codicon-markdown',      color: 'file-md' },
-    html: { icon: 'codicon-code',          color: 'file-text' },
-    css:  { icon: 'codicon-symbol-color',  color: 'file-python' },
-    txt:  { icon: 'codicon-file-text',     color: 'file-text' },
-    bazel:{ icon: 'codicon-flame',          color: 'file-json' },
-    toml: { icon: 'codicon-settings',      color: 'file-default' },
+    py: { icon: 'codicon-symbol-method', color: 'file-python' },
+    js: { icon: 'codicon-symbol-event', color: 'file-python' },
+    ts: { icon: 'codicon-symbol-event', color: 'file-python' },
+    json: { icon: 'codicon-json', color: 'file-json' },
+    md: { icon: 'codicon-markdown', color: 'file-md' },
+    html: { icon: 'codicon-code', color: 'file-text' },
+    css: { icon: 'codicon-symbol-color', color: 'file-python' },
+    txt: { icon: 'codicon-file-text', color: 'file-text' },
+    bazel: { icon: 'codicon-flame', color: 'file-json' },
+    ipynb: { icon: 'codicon-book', color: 'file-python' },
+    toml: { icon: 'codicon-settings', color: 'file-default' },
   };
   return map[ext] || { icon: 'codicon-file', color: 'file-default' };
 }
@@ -102,13 +103,22 @@ export function FileTree() {
   const { prompt, confirm } = useDialog();
   const tree = vfs.tree();
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; node: TreeNode } | null>(null);
+  const [bgCtxMenu, setBgCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
   const handleContextMenu = useCallback((e: MouseEvent, node: TreeNode) => {
     e.preventDefault();
+    e.stopPropagation();
+    setBgCtxMenu(null);
     setCtxMenu({ x: e.clientX, y: e.clientY, node });
   }, []);
 
-  const closeMenu = useCallback(() => setCtxMenu(null), []);
+  const handleBgContextMenu = useCallback((e: MouseEvent) => {
+    e.preventDefault();
+    setCtxMenu(null);
+    setBgCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const closeMenu = useCallback(() => { setCtxMenu(null); setBgCtxMenu(null); }, []);
 
   const handleRename = useCallback(async () => {
     if (!ctxMenu) return;
@@ -135,9 +145,7 @@ export function FileTree() {
     dispatch({ type: 'CLOSE_TAB', path: node.path });
   }, [ctxMenu, vfs, dispatch, closeMenu, confirm]);
 
-  const handleNewFile = useCallback(async () => {
-    if (!ctxMenu) return;
-    const base = ctxMenu.node.type === 'directory' ? ctxMenu.node.path : '';
+  const handleNewFile = useCallback(async (base?: string) => {
     closeMenu();
     const name = await prompt({ title: 'New File', placeholder: 'Enter file name...' });
     if (!name) return;
@@ -145,7 +153,23 @@ export function FileTree() {
     vfs.set(path, '');
     dispatch({ type: 'VFS_CHANGED' });
     dispatch({ type: 'OPEN_FILE', path });
-  }, [ctxMenu, vfs, dispatch, closeMenu, prompt]);
+  }, [vfs, dispatch, closeMenu, prompt]);
+
+  const handleNewNotebook = useCallback(async (base?: string) => {
+    closeMenu();
+    const name = await prompt({ title: 'New Notebook', defaultValue: 'untitled.ipynb', placeholder: 'Enter notebook name...' });
+    if (!name) return;
+    const nbName = name.endsWith('.ipynb') ? name : name + '.ipynb';
+    const emptyNotebook = JSON.stringify({
+      cells: [{ cell_type: 'code', source: '', metadata: {}, outputs: [], execution_count: null }],
+      metadata: { kernelspec: { display_name: 'Python 3', language: 'python', name: 'python3' } },
+      nbformat: 4, nbformat_minor: 5
+    }, null, 2);
+    const path = base ? base + '/' + nbName : nbName;
+    vfs.set(path, emptyNotebook);
+    dispatch({ type: 'VFS_CHANGED' });
+    dispatch({ type: 'OPEN_FILE', path });
+  }, [vfs, dispatch, closeMenu, prompt]);
 
   const sortedRootChildren = Object.values(tree.children).sort((a, b) => {
     if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
@@ -153,17 +177,25 @@ export function FileTree() {
   });
 
   return (
-    <div id="file-tree">
+    <div id="file-tree" onContextMenu={handleBgContextMenu}>
       {sortedRootChildren.map((child) => (
         <TreeItem key={child.path} node={child} depth={0} onContextMenu={handleContextMenu} />
       ))}
 
       {ctxMenu && (
         <ContextMenu x={ctxMenu.x} y={ctxMenu.y} onClose={closeMenu}>
-          <ContextMenuItem icon="codicon-new-file" label="New File" onClick={handleNewFile} />
+          <ContextMenuItem icon="codicon-new-file" label="New File" onClick={() => handleNewFile(ctxMenu.node.type === 'directory' ? ctxMenu.node.path : '')} />
+          <ContextMenuItem icon="codicon-notebook" label="New Notebook" onClick={() => handleNewNotebook(ctxMenu.node.type === 'directory' ? ctxMenu.node.path : '')} />
           <ContextMenuSeparator />
           <ContextMenuItem icon="codicon-edit" label="Rename" onClick={handleRename} />
           <ContextMenuItem icon="codicon-trash" label="Delete" danger onClick={handleDelete} />
+        </ContextMenu>
+      )}
+
+      {bgCtxMenu && (
+        <ContextMenu x={bgCtxMenu.x} y={bgCtxMenu.y} onClose={closeMenu}>
+          <ContextMenuItem icon="codicon-new-file" label="New File" onClick={() => handleNewFile()} />
+          <ContextMenuItem icon="codicon-notebook" label="New Notebook" onClick={() => handleNewNotebook()} />
         </ContextMenu>
       )}
     </div>

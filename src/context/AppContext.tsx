@@ -170,7 +170,7 @@ function saveSettings(settings: AppSettings): void {
 
 // ─── Worker output callback ─────────────────────────────
 
-export type WorkerOutputListener = (msgType: string, data: unknown) => void;
+export type WorkerOutputListener = (msgType: string, data: unknown, fullMsg?: Record<string, unknown>) => void;
 
 // ─── Context ────────────────────────────────────────────
 
@@ -206,13 +206,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })();
 
     // Start the Pyodide web worker (independent of VFS/Git)
-    initPyodideWorker((type, data) => {
+    initPyodideWorker((type, data, fullMsg) => {
       if (type === 'ready') {
         dispatch({ type: 'SET_PYODIDE_READY', ready: true });
       }
-      // Forward all messages to listeners (terminal, etc.)
+      // Forward all messages to listeners (terminal, notebook, etc.)
       for (const listener of listenersRef.current) {
-        listener(type, data);
+        listener(type, data, fullMsg);
       }
     });
     postToWorker('init');

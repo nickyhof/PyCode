@@ -2,7 +2,7 @@
  * Pyodide Worker Communication — manages the web worker that runs Python.
  */
 
-export type PyodideMessageHandler = (type: string, data: unknown) => void;
+export type PyodideMessageHandler = (type: string, data: unknown, fullMsg?: Record<string, unknown>) => void;
 
 let worker: Worker | null = null;
 let onMessage: PyodideMessageHandler | null = null;
@@ -16,7 +16,8 @@ export function initPyodideWorker(messageHandler: PyodideMessageHandler): void {
 
   worker.onmessage = (e: MessageEvent) => {
     const { type, data } = e.data;
-    if (onMessage) onMessage(type, data);
+    // Pass both the data value and the full message (for cellId etc.)
+    if (onMessage) onMessage(type, data, e.data);
   };
 }
 
@@ -55,6 +56,13 @@ export function emitToTerminal(text: string): void {
  */
 export function runPythonCode(code: string): void {
   postToWorker('exec', { code });
+}
+
+/**
+ * Execute a notebook cell. Output is tagged with cellId.
+ */
+export function runCell(cellId: string, code: string): void {
+  postToWorker('execCell', { cellId, code });
 }
 
 /**

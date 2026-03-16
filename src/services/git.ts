@@ -205,7 +205,14 @@ export async function syncVfsToGitFS(
   const existingFiles = await listFilesRecursive(dir, '');
 
   for (const [path, content] of Object.entries(files)) {
-    await writeFileRecursive(dir + '/' + path, content);
+    // Only write if content actually changed to avoid mtime updates
+    let existing: string | null = null;
+    try {
+      existing = await pfs.readFile(dir + '/' + path, 'utf8') as string;
+    } catch { /* file doesn't exist yet */ }
+    if (existing !== content) {
+      await writeFileRecursive(dir + '/' + path, content);
+    }
   }
 
   for (const existingPath of existingFiles) {
@@ -241,7 +248,7 @@ export interface GitStatusEntry {
 }
 
 export async function gitStatus(): Promise<GitStatusEntry[]> {
-  if (!gitReady || !fs) return [];
+  if (!gitReady || !fs || !pfs) return [];
   const matrix = await git.statusMatrix({ fs, dir });
   const results: GitStatusEntry[] = [];
 
@@ -258,6 +265,16 @@ export async function gitStatus(): Promise<GitStatusEntry[]> {
     else if (head === 1 && workdir === 0 && stage === 1) status = 'deleted-staged';
     else if (head === 1 && workdir === 1 && stage === 3) status = 'staged';
     else status = 'unknown';
+
+    // Content-based verification: if statusMatrix says modified but content is identical, skip
+    if (status === 'modified' && head === 1 && workdir === 2) {
+      try {
+        const workdirContent = await pfs.readFile(dir + '/' + filepath, 'utf8') as string;
+        const headBlob = await git.readBlob({ fs, dir, oid: await git.resolveRef({ fs, dir, ref: 'HEAD' }), filepath: filepath as string });
+        const headContent = new TextDecoder().decode(headBlob.blob);
+        if (workdirContent === headContent) continue; // Actually unchanged
+      } catch { /* If comparison fails, keep the status as-is */ }
+    }
 
     results.push({ filepath: filepath as string, status, head, workdir, stage });
   }

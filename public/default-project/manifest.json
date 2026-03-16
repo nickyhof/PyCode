@@ -9,5 +9,6 @@
   "tests/test_mathutils.py",
   "pyproject.toml",
   "README.md",
-  "data/config.json"
+  "data/config.json",
+  "notebook.ipynb"
 ]

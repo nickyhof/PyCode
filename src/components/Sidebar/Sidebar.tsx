@@ -64,6 +64,21 @@ export function Sidebar({ activePanel }: SidebarProps) {
             }}>
               <span className="codicon codicon-new-file" />
             </button>
+            <button className="icon-btn" title="New Notebook" onClick={async () => {
+              const name = await prompt({ title: 'New Notebook', defaultValue: 'untitled.ipynb', placeholder: 'Enter notebook name...' });
+              if (!name) return;
+              const nbName = name.endsWith('.ipynb') ? name : name + '.ipynb';
+              const emptyNotebook = JSON.stringify({
+                cells: [{ cell_type: 'code', source: '', metadata: {}, outputs: [], execution_count: null }],
+                metadata: { kernelspec: { display_name: 'Python 3', language: 'python', name: 'python3' } },
+                nbformat: 4, nbformat_minor: 5
+              }, null, 2);
+              vfs.set(nbName, emptyNotebook);
+              dispatch({ type: 'VFS_CHANGED' });
+              dispatch({ type: 'OPEN_FILE', path: nbName });
+            }}>
+              <span className="codicon codicon-notebook" />
+            </button>
             <button className="icon-btn" title="New Folder" onClick={async () => {
               const name = await prompt({ title: 'New Folder', defaultValue: 'new-folder', placeholder: 'Enter folder name...' });
               if (!name) return;

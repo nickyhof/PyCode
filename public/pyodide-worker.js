@@ -10,16 +10,27 @@ let isReady = false;
 // Virtual filesystem contents passed from main thread
 let virtualFS = {};
 
+// When non-null, stdout/stderr route to cell-specific messages
+let activeCellId = null;
+
 async function initPyodide() {
   importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.4/full/pyodide.js');
   
   pyodide = await loadPyodide({
     indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.4/full/',
     stdout: (text) => {
-      self.postMessage({ type: 'stdout', data: text });
+      if (activeCellId) {
+        self.postMessage({ type: 'cell-stdout', cellId: activeCellId, data: text });
+      } else {
+        self.postMessage({ type: 'stdout', data: text });
+      }
     },
     stderr: (text) => {
-      self.postMessage({ type: 'stderr', data: text });
+      if (activeCellId) {
+        self.postMessage({ type: 'cell-stderr', cellId: activeCellId, data: text });
+      } else {
+        self.postMessage({ type: 'stderr', data: text });
+      }
     }
   });
 
@@ -128,6 +139,30 @@ os.chdir('${parentDir}')
         self.postMessage({ type: 'repl-done', success: false });
       }
       break;
+
+    case 'execCell': {
+      if (!isReady) {
+        self.postMessage({ type: 'cell-stderr', cellId: data.cellId, data: 'Python is still loading...' });
+        return;
+      }
+      const cellId = data.cellId;
+      activeCellId = cellId;
+      
+      try {
+        syncVirtualFS();
+        const result = await pyodide.runPythonAsync(data.code);
+        if (result !== undefined && result !== null) {
+          self.postMessage({ type: 'cell-stdout', cellId, data: String(result) });
+        }
+        self.postMessage({ type: 'cell-done', cellId, success: true });
+      } catch (err) {
+        self.postMessage({ type: 'cell-stderr', cellId, data: err.message });
+        self.postMessage({ type: 'cell-done', cellId, success: false });
+      }
+      
+      activeCellId = null;
+      break;
+    }
 
     case 'install':
       if (!isReady) {
