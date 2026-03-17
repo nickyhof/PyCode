@@ -8,6 +8,8 @@
   "tests/BUILD.bazel",
   "tests/test_mathutils.py",
   "examples/plotting.py",
+  "examples/pandas_demo.py",
+  "examples/pandas_notebook.ipynb",
   "pyproject.toml",
   "README.md",
   "data/config.json",
