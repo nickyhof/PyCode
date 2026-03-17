@@ -19,6 +19,7 @@ interface NotebookCell {
 interface CellOutput {
   output_type: 'stdout' | 'stderr' | 'execute_result' | 'display_data';
   text: string;
+  imageData?: string;  // base64 data URI for plots
 }
 
 interface NotebookEditorProps {
@@ -104,9 +105,21 @@ function parseOutputs(outputs?: Record<string, unknown>[]): CellOutput[] {
     const text = o.text
       ? (Array.isArray(o.text) ? (o.text as string[]).join('') : String(o.text))
       : '';
+    // Check for image data in display_data outputs
+    let imageData: string | undefined;
+    if (o.output_type === 'display_data' && o.data && typeof o.data === 'object') {
+      const mimeData = o.data as Record<string, unknown>;
+      if (mimeData['image/png']) {
+        const b64 = Array.isArray(mimeData['image/png'])
+          ? (mimeData['image/png'] as string[]).join('')
+          : String(mimeData['image/png']);
+        imageData = `data:image/png;base64,${b64}`;
+      }
+    }
     return {
       output_type: (o.output_type as CellOutput['output_type']) || 'stdout',
       text,
+      imageData,
     };
   });
 }
@@ -144,13 +157,24 @@ function serializeNotebook(cells: NotebookCell[]): string {
         if (c.cell_type === 'code') {
           merged.execution_count = c.execution_count;
           merged.outputs = c.outputs.length > 0
-            ? c.outputs.map((o) => ({
-                output_type: 'stream',
-                name: o.output_type === 'stderr' ? 'stderr' : 'stdout',
-                text: o.text.split('\n').map((line, i, arr) =>
-                  i < arr.length - 1 ? line + '\n' : line
-                ),
-              }))
+            ? c.outputs.map((o) => {
+                if (o.imageData) {
+                  // Serialize as display_data with image/png MIME
+                  const b64 = o.imageData.replace('data:image/png;base64,', '');
+                  return {
+                    output_type: 'display_data',
+                    data: { 'image/png': b64, 'text/plain': ['<Figure>'] },
+                    metadata: {},
+                  };
+                }
+                return {
+                  output_type: 'stream',
+                  name: o.output_type === 'stderr' ? 'stderr' : 'stdout',
+                  text: o.text.split('\n').map((line, i, arr) =>
+                    i < arr.length - 1 ? line + '\n' : line
+                  ),
+                };
+              })
             : [];
         }
         return merged;
@@ -163,13 +187,23 @@ function serializeNotebook(cells: NotebookCell[]): string {
       };
       if (c.cell_type === 'code') {
         newCell.execution_count = c.execution_count;
-        newCell.outputs = c.outputs.map((o) => ({
-          output_type: 'stream',
-          name: o.output_type === 'stderr' ? 'stderr' : 'stdout',
-          text: o.text.split('\n').map((line, i, arr) =>
-            i < arr.length - 1 ? line + '\n' : line
-          ),
-        }));
+        newCell.outputs = c.outputs.map((o) => {
+          if (o.imageData) {
+            const b64 = o.imageData.replace('data:image/png;base64,', '');
+            return {
+              output_type: 'display_data',
+              data: { 'image/png': b64, 'text/plain': ['<Figure>'] },
+              metadata: {},
+            };
+          }
+          return {
+            output_type: 'stream',
+            name: o.output_type === 'stderr' ? 'stderr' : 'stdout',
+            text: o.text.split('\n').map((line, i, arr) =>
+              i < arr.length - 1 ? line + '\n' : line
+            ),
+          };
+        });
       }
       return newCell;
     }),
@@ -255,6 +289,25 @@ export function NotebookEditor({ filePath }: NotebookEditorProps) {
                     {
                       output_type: type === 'cell-stderr' ? 'stderr' as const : 'stdout' as const,
                       text: String(data || ''),
+                    },
+                  ],
+                }
+              : c
+          )
+        );
+      } else if (type === 'cell-image') {
+        // Plot image from matplotlib
+        setCells((prev) =>
+          prev.map((c) =>
+            c.id === cellId
+              ? {
+                  ...c,
+                  outputs: [
+                    ...c.outputs,
+                    {
+                      output_type: 'display_data' as const,
+                      text: '',
+                      imageData: String(data || ''),
                     },
                   ],
                 }
@@ -596,12 +649,18 @@ export function NotebookEditor({ filePath }: NotebookEditorProps) {
                   {cell.outputs.length > 0 && (
                     <div className="nb-output">
                       {cell.outputs.map((out, i) => (
-                        <pre
-                          key={i}
-                          className={`nb-output-line ${out.output_type}`}
-                        >
-                          {out.text}
-                        </pre>
+                        out.imageData ? (
+                          <div key={i} className="nb-output-image">
+                            <img src={out.imageData} alt={`Plot output ${i + 1}`} />
+                          </div>
+                        ) : (
+                          <pre
+                            key={i}
+                            className={`nb-output-line ${out.output_type}`}
+                          >
+                            {out.text}
+                          </pre>
+                        )
                       ))}
                     </div>
                   )}

@@ -3,7 +3,7 @@
  * Commands like `python`, `pip`, `uv`, `git` execute via Pyodide/isomorphic-git.
  */
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { useApp } from '../../context/AppContext';
@@ -23,6 +23,7 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
   const cmdBufRef = useRef('');
   const handleCommandRef = useRef<(cmd: string) => void>(() => {});
   const runningRef = useRef(false);
+  const [plotImages, setPlotImages] = useState<string[]>([]);
 
   const writePrompt = useCallback(() => {
     const term = termRef.current;
@@ -703,6 +704,12 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
         case 'stderr':
           term.write(`\r\n\x1b[31m${data as string}\x1b[0m`);
           break;
+        case 'image':
+          // Plot image received from matplotlib
+          if (typeof data === 'string') {
+            setPlotImages(prev => [...prev, data]);
+          }
+          break;
         case 'done':
           runningRef.current = false;
           writePrompt();
@@ -803,6 +810,7 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
 
   const handleClear = useCallback(() => {
     termRef.current?.clear();
+    setPlotImages([]);
   }, []);
 
   return (
@@ -823,6 +831,37 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
           </button>
         </div>
       </div>
+      {/* Plot images panel */}
+      {plotImages.length > 0 && (
+        <div className="terminal-plots">
+          <div className="terminal-plots-header">
+            <span className="terminal-plots-title">
+              <span className="codicon codicon-graph" /> Plots ({plotImages.length})
+            </span>
+            <button
+              className="icon-btn"
+              title="Clear All Plots"
+              onClick={() => setPlotImages([])}
+            >
+              <span className="codicon codicon-close-all" />
+            </button>
+          </div>
+          <div className="terminal-plots-scroll">
+            {plotImages.map((src, i) => (
+              <div key={i} className="terminal-plot-item">
+                <img src={src} alt={`Plot ${i + 1}`} className="terminal-plot-img" />
+                <button
+                  className="terminal-plot-close"
+                  title="Remove"
+                  onClick={() => setPlotImages(prev => prev.filter((_, j) => j !== i))}
+                >
+                  <span className="codicon codicon-close" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div
         id="terminal-container"
         ref={termContainerRef}

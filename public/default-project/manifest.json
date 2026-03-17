@@ -7,6 +7,7 @@
   "app/main.py",
   "tests/BUILD.bazel",
   "tests/test_mathutils.py",
+  "examples/plotting.py",
   "pyproject.toml",
   "README.md",
   "data/config.json",

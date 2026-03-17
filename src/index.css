@@ -880,6 +880,93 @@ kbd {
   overflow: hidden;
 }
 
+/* --- Terminal Plot Panel --- */
+.terminal-plots {
+  border-bottom: 1px solid var(--border-primary);
+  background: #1a1a2e;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.terminal-plots-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+  color: var(--fg-secondary);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.terminal-plots-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--fg-accent);
+}
+
+.terminal-plots-scroll {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.terminal-plots-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.terminal-plot-item {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: border-color 0.2s;
+}
+
+.terminal-plot-item:hover {
+  border-color: var(--fg-accent);
+}
+
+.terminal-plot-img {
+  display: block;
+  max-height: 200px;
+  width: auto;
+  border-radius: 5px;
+}
+
+.terminal-plot-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.7);
+  border-radius: 50%;
+  color: var(--fg-secondary);
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+
+.terminal-plot-item:hover .terminal-plot-close {
+  opacity: 1;
+}
+
+.terminal-plot-close:hover {
+  color: var(--fg-bright);
+  background: rgba(0,0,0,0.9);
+}
+
 /* --- Status Bar --- */
 #statusbar {
   height: var(--statusbar-height);
@@ -2281,7 +2368,7 @@ kbd {
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 0 0 6px 6px;
   padding: 10px 14px;
-  max-height: 300px;
+  max-height: 600px;
   overflow-y: auto;
   margin-top: -6px;
 }
@@ -2302,6 +2389,16 @@ kbd {
 
 .nb-output-line.stderr {
   color: #f48771;
+}
+
+.nb-output-image {
+  padding: 8px 0;
+}
+
+.nb-output-image img {
+  max-width: 100%;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.06);
 }
 
 .nb-markdown-rendered {

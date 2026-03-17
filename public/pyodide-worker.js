@@ -37,6 +37,76 @@ async function initPyodide() {
   // Install micropip for package management
   await pyodide.loadPackage('micropip');
 
+  // ── Matplotlib custom backend ───────────────────────────
+  // Register a JS callback that the Python backend will call with base64 image data
+  self._sendPlotImage = (dataUri) => {
+    if (activeCellId) {
+      self.postMessage({ type: 'cell-image', cellId: activeCellId, data: dataUri });
+    } else {
+      self.postMessage({ type: 'image', data: dataUri });
+    }
+  };
+
+  // Write a custom matplotlib backend into Pyodide's filesystem.
+  // This is the proper way to intercept plt.show() — matplotlib calls
+  // the backend's show() natively, no import hooks needed.
+  await pyodide.runPythonAsync(`
+import os, sys
+os.environ['MPLBACKEND'] = 'module://pycode_backend'
+if '/' not in sys.path:
+    sys.path.insert(0, '/')
+`);
+
+  pyodide.FS.writeFile('/pycode_backend.py', `
+"""
+PyCode custom matplotlib backend for Web Worker rendering.
+Extends the Agg backend, captures figures as PNG, and sends them
+to the main thread as base64 data URIs via postMessage.
+"""
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.backend_bases import FigureManagerBase
+import matplotlib
+
+# Required by matplotlib backend protocol
+FigureCanvas = FigureCanvasAgg
+
+class FigureManager(FigureManagerBase):
+    def show(self):
+        import base64, io
+        from js import self as _js_self
+        fig = self.canvas.figure
+        buf = io.BytesIO()
+        fc = fig.get_facecolor()
+        bg = fc if fc != (1.0, 1.0, 1.0, 0.0) else '#1e1e1e'
+        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight',
+                    facecolor=bg, edgecolor='none')
+        buf.seek(0)
+        b64 = base64.b64encode(buf.read()).decode('ascii')
+        _js_self._sendPlotImage(f'data:image/png;base64,{b64}')
+        buf.close()
+
+def show(*args, **kwargs):
+    """Called by plt.show() — iterates all figures, renders, and cleans up."""
+    from matplotlib._pylab_helpers import Gcf
+    for manager in Gcf.get_all_fig_managers():
+        manager.show()
+    Gcf.destroy_all()
+
+def new_figure_manager(num, *args, FigureClass=None, **kwargs):
+    from matplotlib.figure import Figure
+    if FigureClass is None:
+        FigureClass = Figure
+    fig = FigureClass(*args, **kwargs)
+    canvas = FigureCanvas(fig)
+    manager = FigureManager(canvas, num)
+    return manager
+
+def new_figure_manager_given_figure(num, figure):
+    canvas = FigureCanvas(figure)
+    manager = FigureManager(canvas, num)
+    return manager
+`);
+
   isReady = true;
   self.postMessage({ type: 'ready' });
 }
