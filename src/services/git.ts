@@ -445,6 +445,39 @@ export async function gitDeleteBranch(name: string): Promise<void> {
   await git.deleteBranch({ fs, dir, ref: name });
 }
 
+// ─── Remotes ──────────────────────────────────────────────
+
+export async function gitAddRemote(name: string, url: string): Promise<void> {
+  if (!gitReady || !fs) return;
+  try {
+    await git.addRemote({ fs, dir, remote: name, url });
+  } catch {
+    // Remote already exists — delete and re-add
+    await git.deleteRemote({ fs, dir, remote: name });
+    await git.addRemote({ fs, dir, remote: name, url });
+  }
+}
+
+export async function gitGetRemoteUrl(name = 'origin'): Promise<string | null> {
+  if (!gitReady || !fs) return null;
+  try {
+    const remotes = await git.listRemotes({ fs, dir });
+    const remote = remotes.find((r) => r.remote === name);
+    return remote?.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function gitListRemotes(): Promise<{ remote: string; url: string }[]> {
+  if (!gitReady || !fs) return [];
+  try {
+    return await git.listRemotes({ fs, dir });
+  } catch {
+    return [];
+  }
+}
+
 // ─── Push / Pull ───────────────────────────────────────────
 
 export async function gitPush(

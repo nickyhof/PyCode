@@ -17,11 +17,15 @@ import {
   gitDiff,
   gitPush,
   gitPull,
+  cloneRepo,
   syncVfsToGitFS,
   syncGitFSToVfs,
+  gitAddRemote,
+  gitGetRemoteUrl,
   type GitStatusEntry,
   type GitLogEntry,
 } from '../../services/git';
+import { useDialog } from '../Dialog/Dialog';
 
 function statusLetter(status: string): { letter: string; cls: string } {
   switch (status) {
@@ -41,12 +45,14 @@ function statusLetter(status: string): { letter: string; cls: string } {
 export function GitPanel() {
   const { state, vfs, dispatch } = useApp();
   const { notify } = useNotification();
+  const { prompt } = useDialog();
   const [commitMsg, setCommitMsg] = useState('');
   const [staged, setStaged] = useState<GitStatusEntry[]>([]);
   const [changes, setChanges] = useState<GitStatusEntry[]>([]);
   const [log, setLog] = useState<GitLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
   const [sectionsOpen, setSectionsOpen] = useState({ staged: true, changes: true, log: true });
 
   const refresh = useCallback(async () => {
@@ -76,6 +82,8 @@ export function GitPanel() {
     (async () => {
       setLoading(true);
       await initGit(() => vfs.getAllFiles());
+      const url = await gitGetRemoteUrl();
+      setRemoteUrl(url);
       await refresh();
       setLoading(false);
     })();
@@ -177,6 +185,48 @@ export function GitPanel() {
     setSyncing(false);
   }, [vfs, dispatch, refresh, notify]);
 
+  const handleClone = useCallback(async () => {
+    const url = await prompt({ title: 'Clone Repository', placeholder: 'https://github.com/user/repo.git', defaultValue: '' });
+    if (!url) return;
+    setSyncing(true);
+    try {
+      const pat = localStorage.getItem('github-pat');
+      // Add auth to URL if PAT available and it's a GitHub URL
+      let cloneUrl = url;
+      if (pat && url.includes('github.com')) {
+        cloneUrl = url.replace('https://', `https://${pat}@`);
+      }
+      await cloneRepo(cloneUrl);
+      await syncGitFSToVfs(
+        (path, content) => vfs.set(path, content),
+        () => { /* don't clear */ }
+      );
+      dispatch({ type: 'VFS_CHANGED' });
+      const remote = await gitGetRemoteUrl();
+      setRemoteUrl(remote);
+      await refresh();
+      notify('Clone complete!', 'success');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notify(`Clone failed: ${msg}`, 'error');
+    }
+    setSyncing(false);
+  }, [vfs, dispatch, refresh, notify, prompt]);
+
+  const handleSetRemote = useCallback(async () => {
+    const current = remoteUrl || '';
+    const url = await prompt({ title: 'Set Remote URL (origin)', placeholder: 'https://github.com/user/repo.git', defaultValue: current });
+    if (!url) return;
+    try {
+      await gitAddRemote('origin', url);
+      setRemoteUrl(url);
+      notify('Remote URL set!', 'success');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      notify(`Failed to set remote: ${msg}`, 'error');
+    }
+  }, [remoteUrl, notify, prompt]);
+
   const toggleSection = useCallback((section: 'staged' | 'changes' | 'log') => {
     setSectionsOpen((prev) => ({ ...prev, [section]: !prev[section] }));
   }, []);
@@ -199,6 +249,12 @@ export function GitPanel() {
       <div className="sidebar-header">
         <span className="sidebar-title">SOURCE CONTROL</span>
         <div className="sidebar-actions">
+          <button className="icon-btn" title="Clone Repository" onClick={handleClone} disabled={syncing}>
+            <span className="codicon codicon-repo-clone" />
+          </button>
+          <button className="icon-btn" title="Set Remote URL" onClick={handleSetRemote}>
+            <span className="codicon codicon-remote" />
+          </button>
           <button className="icon-btn" title="Refresh" onClick={refresh}>
             <span className="codicon codicon-refresh" />
           </button>
@@ -239,6 +295,12 @@ export function GitPanel() {
                 <span>Pull</span>
               </button>
             </div>
+            {remoteUrl && (
+              <div className="git-remote-info">
+                <span className="codicon codicon-remote" style={{ fontSize: 11, marginRight: 4 }} />
+                <span style={{ opacity: 0.7 }}>{remoteUrl}</span>
+              </div>
+            )}
           </div>
 
           {/* Staged Changes */}
