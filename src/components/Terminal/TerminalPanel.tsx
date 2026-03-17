@@ -27,6 +27,7 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
   const historyRef = useRef<string[]>([]);
   const historyIdxRef = useRef(-1);
   const savedCmdRef = useRef('');
+  const inputBufferRef = useRef<SharedArrayBuffer | null>(null);
   const [plotImages, setPlotImages] = useState<string[]>([]);
   const [activePanel, setActivePanel] = useState<'terminal' | 'preview'>('terminal');
   const [previewUrl, setPreviewUrl] = useState('/pycode-server/');
@@ -983,6 +984,7 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
         term.write('\r\n');
         term.write('\r\n\x1b[1;36m  Bazel\x1b[0m');
         term.write('\r\n    bazel query/build/run/test/clean');
+        term.write('\r\n');
         term.write('\r\n\x1b[1;36m  Utilities\x1b[0m');
         term.write('\r\n    history              Command history');
         term.write('\r\n    which <cmd>          Check if command exists');
@@ -1006,7 +1008,7 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
 
   // Listen to worker output messages
   useEffect(() => {
-    const removeListener = addWorkerListener((msgType: string, data: unknown) => {
+    const removeListener = addWorkerListener((msgType: string, data: unknown, fullMsg?: Record<string, unknown>) => {
       const term = termRef.current;
       if (!term) return;
 
@@ -1049,6 +1051,18 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
           runningRef.current = false;
           writePrompt();
           break;
+        case 'input-request': {
+          // Python called input() — show prompt and switch to input mode
+          const buffer = (fullMsg as Record<string, unknown>)?.buffer as SharedArrayBuffer;
+          if (buffer) {
+            const prompt = data as string;
+            if (prompt) {
+              term.write(`\r\n${prompt}`);
+            }
+            inputBufferRef.current = buffer;
+          }
+          break;
+        }
       }
 
       if (msgType === 'stdout' && typeof data === 'string' && data.startsWith('Successfully installed ')) {
@@ -1101,7 +1115,8 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
     term.write('\r\n\x1b[36m❯\x1b[0m ');
 
     term.onData((data) => {
-      if (runningRef.current) return;
+      // Block input while a command is running (unless waiting for input())
+      if (runningRef.current && !inputBufferRef.current) return;
 
       // Helper to clear and rewrite the current line
       const rewriteLine = (newCmd: string) => {
@@ -1112,11 +1127,28 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
         term.write(newCmd);
       };
 
-      // Enter — execute command
+      // Enter — execute command or submit input
       if (data === '\r') {
         const cmd = cmdBufRef.current;
         cmdBufRef.current = '';
-        // Add to history (skip empty and duplicates)
+
+        // If we're in input mode, send the text back to the worker
+        const inputBuf = inputBufferRef.current;
+        if (inputBuf) {
+          inputBufferRef.current = null;
+          const int32 = new Int32Array(inputBuf);
+          const uint8 = new Uint8Array(inputBuf);
+          const encoded = new TextEncoder().encode(cmd);
+          int32[1] = encoded.length; // Store length at offset 4
+          uint8.set(encoded, 8);     // Store text bytes at offset 8
+          Atomics.store(int32, 0, 1); // Set flag
+          Atomics.notify(int32, 0);   // Wake worker
+          term.write('\r\n');
+          runningRef.current = true;  // Block terminal while Python runs
+          return;
+        }
+
+        // Normal command mode — add to history
         if (cmd.trim() && historyRef.current[historyRef.current.length - 1] !== cmd.trim()) {
           historyRef.current.push(cmd.trim());
         }
@@ -1136,8 +1168,18 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
 
       // Ctrl+C — cancel
       if (data === '\x03') {
+        // If in input mode, send empty input to unblock the worker
+        if (inputBufferRef.current) {
+          const inputBuf = inputBufferRef.current;
+          inputBufferRef.current = null;
+          const int32 = new Int32Array(inputBuf);
+          int32[1] = 0;
+          Atomics.store(int32, 0, 1);
+          Atomics.notify(int32, 0);
+        }
         cmdBufRef.current = '';
         historyIdxRef.current = -1;
+        runningRef.current = false;
         term.write('^C');
         term.write('\r\n\x1b[36m❯\x1b[0m ');
         return;

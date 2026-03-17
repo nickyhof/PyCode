@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, type KeyboardEvent } from 'react';
 import { useApp } from '../../context/AppContext';
 import { runCell, syncFilesToWorker } from '../../services/pyodide';
 import { Editor, loader } from '@monaco-editor/react';
@@ -257,6 +257,11 @@ export function NotebookEditor({ filePath }: NotebookEditorProps) {
   });
   const [focusedCell, setFocusedCell] = useState<string | null>(null);
   const [editingMarkdown, setEditingMarkdown] = useState<string | null>(null);
+  const [pendingInput, setPendingInput] = useState<{
+    cellId: string;
+    prompt: string;
+    buffer: SharedArrayBuffer;
+  } | null>(null);
   const cellsRef = useRef(cells);
   cellsRef.current = cells;
   const executionCounter = useRef(0);
@@ -322,6 +327,12 @@ export function NotebookEditor({ filePath }: NotebookEditorProps) {
           saveToVfs(updated);
           return updated;
         });
+      } else if (type === 'input-request') {
+        // Python called input() in a notebook cell
+        const buffer = fullMsg?.buffer as SharedArrayBuffer | undefined;
+        if (buffer && cellId) {
+          setPendingInput({ cellId, prompt: String(data || ''), buffer });
+        }
       }
     });
     return remove;
@@ -662,6 +673,45 @@ export function NotebookEditor({ filePath }: NotebookEditorProps) {
                           </pre>
                         )
                       ))}
+                    </div>
+                  )}
+                  {/* Inline input widget for input() */}
+                  {pendingInput && pendingInput.cellId === cell.id && (
+                    <div className="nb-input-widget">
+                      <span className="nb-input-prompt">{pendingInput.prompt || 'input:'}</span>
+                      <input
+                        type="text"
+                        className="nb-input-field"
+                        autoFocus
+                        onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                          if (e.key === 'Enter') {
+                            const val = (e.target as HTMLInputElement).value;
+                            const buf = pendingInput.buffer;
+                            const int32 = new Int32Array(buf);
+                            const uint8 = new Uint8Array(buf);
+                            const encoded = new TextEncoder().encode(val);
+                            int32[1] = encoded.length;
+                            uint8.set(encoded, 8);
+                            Atomics.store(int32, 0, 1);
+                            Atomics.notify(int32, 0);
+                            // Add the input as output for display
+                            setCells((prev) =>
+                              prev.map((c) =>
+                                c.id === cell.id
+                                  ? {
+                                      ...c,
+                                      outputs: [
+                                        ...c.outputs,
+                                        { output_type: 'stdout' as const, text: val },
+                                      ],
+                                    }
+                                  : c
+                              )
+                            );
+                            setPendingInput(null);
+                          }
+                        }}
+                      />
                     </div>
                   )}
                 </>

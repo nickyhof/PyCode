@@ -57,6 +57,12 @@ export function useKeyboard() {
         dispatch({ type: 'TOGGLE_SIDEBAR' });
       }
 
+      // Ctrl+Shift+H or Ctrl+Shift+F — Search across files
+      if (ctrl && e.shiftKey && (e.key === 'H' || e.key === 'h' || e.key === 'F' || e.key === 'f')) {
+        e.preventDefault();
+        dispatch({ type: 'SET_SIDEBAR_PANEL', panel: 'search' });
+      }
+
       // F5 — Run active Python file
       if (e.key === 'F5') {
         e.preventDefault();

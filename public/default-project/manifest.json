@@ -11,6 +11,8 @@
   "examples/pandas_demo.py",
   "examples/pandas_notebook.ipynb",
   "examples/flask_app.py",
+  "examples/input_example.py",
+  "examples/input_notebook.ipynb",
   "examples/fastapi_app.py",
   "pyproject.toml",
   "README.md",

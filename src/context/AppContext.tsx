@@ -81,7 +81,8 @@ type Action =
   | { type: 'OPEN_DIFF'; filepath: string; oldContent: string; newContent: string }
   | { type: 'CLOSE_DIFF' }
   | { type: 'SET_LOCAL_DIR'; handle: FileSystemDirectoryHandle; name: string }
-  | { type: 'CLEAR_LOCAL_DIR' };
+  | { type: 'CLEAR_LOCAL_DIR' }
+  | { type: 'REORDER_TABS'; fromIndex: number; toIndex: number };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -100,6 +101,12 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'SET_ACTIVE_TAB':
       return { ...state, activeTab: action.path };
+    case 'REORDER_TABS': {
+      const tabs = [...state.tabs];
+      const [moved] = tabs.splice(action.fromIndex, 1);
+      tabs.splice(action.toIndex, 0, moved);
+      return { ...state, tabs };
+    }
     case 'MARK_DIRTY':
       return {
         ...state,

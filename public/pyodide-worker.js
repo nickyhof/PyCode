@@ -13,6 +13,21 @@ let virtualFS = {};
 // When non-null, stdout/stderr route to cell-specific messages
 let activeCellId = null;
 
+// ── Stdin input support via SharedArrayBuffer ────────────────
+// Layout: Int32[0] = flag (0=waiting, 1=ready), then Uint8 chars from offset 4
+let inputBuffer = null;    // SharedArrayBuffer
+let inputInt32 = null;     // Int32Array view for Atomics
+let inputUint8 = null;     // Uint8Array view for text data
+
+try {
+  inputBuffer = new SharedArrayBuffer(4096); // 4 bytes flag + 4092 bytes text
+  inputInt32 = new Int32Array(inputBuffer);
+  inputUint8 = new Uint8Array(inputBuffer);
+} catch {
+  // SharedArrayBuffer not available (missing COOP/COEP headers)
+  // Input will fall back to empty string
+}
+
 async function initPyodide() {
   importScripts('https://cdn.jsdelivr.net/pyodide/v0.27.4/full/pyodide.js');
   
@@ -148,6 +163,37 @@ def new_figure_manager_given_figure(num, figure):
     canvas = FigureCanvas(figure)
     manager = FigureManager(canvas, num)
     return manager
+`);
+
+  // ── Stdin input() support ─────────────────────────────────
+  // JS function that blocks the worker until main thread provides input
+  self._pycode_read_input = function(promptText) {
+    if (!inputBuffer) {
+      // No SharedArrayBuffer — return empty string
+      return '';
+    }
+    // Reset the flag
+    Atomics.store(inputInt32, 0, 0);
+    // Ask the main thread for input
+    self.postMessage({ type: 'input-request', data: promptText || '', buffer: inputBuffer, cellId: activeCellId });
+    // Block until flag becomes 1 (main thread wrote input and notified)
+    Atomics.wait(inputInt32, 0, 0);
+    // Read the length from int32[1]
+    const len = inputInt32[1];
+    // Read the text bytes from offset 8
+    const bytes = inputUint8.slice(8, 8 + len);
+    return new TextDecoder().decode(bytes);
+  };
+
+  // Monkey-patch Python's input() to use our JS bridge
+  await pyodide.runPythonAsync(`
+import builtins
+from js import self as _js_self
+
+def _pycode_input(prompt=''):
+    return _js_self._pycode_read_input(prompt or '')
+
+builtins.input = _pycode_input
 `);
 
   isReady = true;

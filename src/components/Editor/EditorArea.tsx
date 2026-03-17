@@ -153,8 +153,10 @@ function registerPythonCodeLens(
     if (!file) return;
     const vfs = vfsRef();
     const allFiles = vfs.getAllFiles();
-    const source = allFiles[file] || '';
+    let source = allFiles[file] || '';
     emitToTerminal(`\r\n\x1b[90m$ python ${file} → ${funcName}()\x1b[0m\r\n`);
+    // Remove the if __name__ == "__main__" block to avoid double execution
+    source = source.replace(/^if\s+__name__\s*==\s*["']__main__["']\s*:.*(?:\n(?:[ \t]+.*)?)*/gm, '');
     const augmented = source + `\n${funcName}()`;
     syncFilesToWorker({ ...allFiles, [file]: augmented });
     runPythonFile(file);
@@ -312,16 +314,24 @@ function getLanguage(path: string): string {
 }
 
 /** Map file extension to a codicon class */
-function getFileIcon(path: string): string {
+function getFileIcon(path: string): { icon: string; color: string } {
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
-  const icons: Record<string, string> = {
-    py: 'codicon-symbol-method', js: 'codicon-symbol-event',
-    json: 'codicon-json', md: 'codicon-markdown',
-    html: 'codicon-code', css: 'codicon-symbol-color',
-    txt: 'codicon-file-text', toml: 'codicon-settings',
-    bazel: 'codicon-flame', ipynb: 'codicon-file',
+  const map: Record<string, { icon: string; color: string }> = {
+    py: { icon: 'codicon-symbol-method', color: 'tab-icon-python' },
+    js: { icon: 'codicon-symbol-event', color: 'tab-icon-js' },
+    ts: { icon: 'codicon-symbol-event', color: 'tab-icon-ts' },
+    json: { icon: 'codicon-json', color: 'tab-icon-json' },
+    md: { icon: 'codicon-markdown', color: 'tab-icon-md' },
+    html: { icon: 'codicon-code', color: 'tab-icon-html' },
+    css: { icon: 'codicon-symbol-color', color: 'tab-icon-css' },
+    txt: { icon: 'codicon-file-text', color: '' },
+    toml: { icon: 'codicon-settings', color: 'tab-icon-toml' },
+    bazel: { icon: 'codicon-flame', color: 'tab-icon-json' },
+    ipynb: { icon: 'codicon-book', color: 'tab-icon-notebook' },
+    yml: { icon: 'codicon-settings', color: 'tab-icon-toml' },
+    yaml: { icon: 'codicon-settings', color: 'tab-icon-toml' },
   };
-  return icons[ext] || 'codicon-file';
+  return map[ext] || { icon: 'codicon-file', color: '' };
 }
 
 export function EditorArea() {
@@ -330,6 +340,7 @@ export function EditorArea() {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const activeTabRef = useRef<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragIdxRef = useRef<number | null>(null);
 
   const activeFile = state.activeTab;
   activeTabRef.current = activeFile;
@@ -382,28 +393,41 @@ export function EditorArea() {
       {/* Tab Bar */}
       <div id="tab-bar">
         <div id="tabs-container">
-          {state.tabs.map((tab) => (
-            <div
-              key={tab.path}
-              className={`tab${tab.path === state.activeTab ? ' active' : ''}${tab.isDirty ? ' dirty' : ''}`}
-              onClick={() => {
-                dispatch({ type: 'CLOSE_DIFF' });
-                dispatch({ type: 'SET_ACTIVE_TAB', path: tab.path });
-              }}
-            >
-              <span className={`tab-icon codicon ${getFileIcon(tab.path)}`} />
-              <span className="tab-label">{tab.path.split('/').pop()}</span>
-              <button
-                className="tab-close"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  dispatch({ type: 'CLOSE_TAB', path: tab.path });
+          {state.tabs.map((tab, idx) => {
+            const { icon, color } = getFileIcon(tab.path);
+            return (
+              <div
+                key={tab.path}
+                className={`tab${tab.path === state.activeTab ? ' active' : ''}${tab.isDirty ? ' dirty' : ''}`}
+                draggable
+                onDragStart={() => { dragIdxRef.current = idx; }}
+                onDragOver={(e) => { e.preventDefault(); }}
+                onDrop={() => {
+                  if (dragIdxRef.current !== null && dragIdxRef.current !== idx) {
+                    dispatch({ type: 'REORDER_TABS', fromIndex: dragIdxRef.current, toIndex: idx });
+                  }
+                  dragIdxRef.current = null;
+                }}
+                onDragEnd={() => { dragIdxRef.current = null; }}
+                onClick={() => {
+                  dispatch({ type: 'CLOSE_DIFF' });
+                  dispatch({ type: 'SET_ACTIVE_TAB', path: tab.path });
                 }}
               >
-                <span className="codicon codicon-close" />
-              </button>
-            </div>
-          ))}
+                <span className={`tab-icon codicon ${icon} ${color}`} />
+                <span className="tab-label">{tab.path.split('/').pop()}</span>
+                <button
+                  className="tab-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dispatch({ type: 'CLOSE_TAB', path: tab.path });
+                  }}
+                >
+                  <span className="codicon codicon-close" />
+                </button>
+              </div>
+            );
+          })}
         </div>
         {state.activeTab && (
           <div className="tab-bar-actions">
@@ -429,6 +453,26 @@ export function EditorArea() {
           </div>
         )}
       </div>
+
+      {/* Breadcrumb Bar */}
+      {state.activeTab && !state.diffView && (
+        <div className="breadcrumb-bar">
+          {(() => {
+            const parts = state.activeTab.split('/');
+            return parts.map((part, i) => {
+              const isLast = i === parts.length - 1;
+              const { icon, color } = isLast ? getFileIcon(state.activeTab!) : { icon: 'codicon-folder', color: 'breadcrumb-folder' };
+              return (
+                <span key={i} className="breadcrumb-item">
+                  {i > 0 && <span className="breadcrumb-sep codicon codicon-chevron-right" />}
+                  <span className={`breadcrumb-icon codicon ${icon} ${color}`} />
+                  <span className={isLast ? 'breadcrumb-current' : ''}>{part}</span>
+                </span>
+              );
+            });
+          })()}
+        </div>
+      )}
 
       {/* Welcome View */}
       {state.tabs.length === 0 && !state.diffView && (
@@ -540,6 +584,10 @@ export function EditorArea() {
               renderWhitespace: 'selection',
               bracketPairColorization: { enabled: true },
               guides: { bracketPairs: true, indentation: true },
+              folding: true,
+              foldingStrategy: 'indentation',
+              foldingHighlight: true,
+              showFoldingControls: 'mouseover',
               padding: { top: 8 },
               automaticLayout: true,
               wordWrap: state.settings.wordWrap ? 'on' : 'off',

@@ -625,6 +625,55 @@ input:focus, select:focus {
   flex-shrink: 0;
 }
 
+/* Tab icon colors */
+.tab-icon-python { color: #4584b6; }
+.tab-icon-js { color: #f0db4f; }
+.tab-icon-ts { color: #3178c6; }
+.tab-icon-json { color: #f5c542; }
+.tab-icon-md { color: #519aba; }
+.tab-icon-html { color: #e34c26; }
+.tab-icon-css { color: #563d7c; }
+.tab-icon-toml { color: #9b9b9b; }
+.tab-icon-notebook { color: #e97627; }
+
+/* Draggable tabs */
+.tab[draggable] { cursor: grab; }
+.tab[draggable]:active { cursor: grabbing; }
+
+/* Breadcrumb Bar */
+.breadcrumb-bar {
+  display: flex;
+  align-items: center;
+  padding: 2px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--fg-secondary);
+  gap: 0;
+  min-height: 22px;
+  flex-shrink: 0;
+}
+
+.breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.breadcrumb-sep {
+  font-size: 10px;
+  margin: 0 2px;
+  opacity: 0.5;
+}
+
+.breadcrumb-icon {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.breadcrumb-folder { color: #dcb67a; }
+.breadcrumb-current { color: var(--fg-primary); }
+
 .tab-label {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1140,15 +1189,101 @@ kbd {
 }
 
 .search-result-item {
-  padding: 4px 8px;
+  padding: 3px 8px 3px 20px;
   cursor: pointer;
   border-radius: 3px;
   font-size: var(--font-size-sm);
   transition: background var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .search-result-item:hover {
   background: var(--bg-hover);
+}
+
+.search-replace-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.search-replace-row .search-box {
+  flex: 1;
+}
+
+.search-replace-row .icon-btn {
+  flex-shrink: 0;
+}
+
+.search-input-row {
+  display: flex;
+  gap: 4px;
+}
+
+.search-input-row .search-box {
+  flex: 1;
+}
+
+.search-toggle {
+  font-size: 11px !important;
+  font-weight: 600;
+  min-width: 24px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.search-toggle.active {
+  opacity: 1;
+  color: var(--fg-accent);
+  background: var(--bg-hover);
+  border-radius: 3px;
+}
+
+.search-summary {
+  font-size: 11px;
+  color: var(--fg-muted);
+  margin-top: 6px;
+  padding: 0 2px;
+}
+
+.search-file-group {
+  margin-bottom: 4px;
+}
+
+.search-file-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--fg-accent);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.search-file-header:hover {
+  background: var(--bg-hover);
+  border-radius: 3px;
+}
+
+.search-file-count {
+  margin-left: auto;
+  font-size: 10px;
+  background: var(--bg-hover);
+  color: var(--fg-muted);
+  padding: 0 6px;
+  border-radius: 8px;
+  line-height: 16px;
+}
+
+.search-result-line-num {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  min-width: 24px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 .search-result-file {
@@ -1161,6 +1296,30 @@ kbd {
   color: var(--fg-secondary);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.search-replace-btn {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.search-result-item:hover .search-replace-btn {
+  opacity: 1;
+}
+
+.search-replace-btn:hover {
+  color: var(--fg-accent);
 }
 
 .search-result-match {
@@ -2465,6 +2624,41 @@ kbd {
   border: 1px solid rgba(255,255,255,0.06);
 }
 
+/* Notebook inline input widget */
+.nb-input-widget {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.nb-input-prompt {
+  color: var(--fg-accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.nb-input-field {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 8px;
+  color: var(--fg-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+}
+
+.nb-input-field:focus {
+  border-color: var(--fg-accent);
+}
+
 .nb-markdown-rendered {
   padding: 12px 16px;
   cursor: pointer;
@@ -2720,4 +2914,31 @@ kbd {
   border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   font-family: var(--font-mono);
+}
+
+/* ── Drag & Drop File Upload Overlay ────────────────────── */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 122, 204, 0.15);
+  backdrop-filter: blur(2px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drop-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--fg-accent);
+  font-size: 16px;
+  font-weight: 500;
+  padding: 40px 60px;
+  border: 2px dashed var(--fg-accent);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.4);
 }
