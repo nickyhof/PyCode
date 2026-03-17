@@ -5,6 +5,7 @@ import { useApp } from '../../context/AppContext';
 import { useNotification } from '../Notification/Notification';
 import { syncFilesToWorker, runPythonFile, emitToTerminal, runPythonCode } from '../../services/pyodide';
 import { encodeShareUrl } from '../../services/shareUrl';
+import { startServer } from '../../services/webServer';
 import { NotebookEditor } from './NotebookEditor';
 
 // Configure Monaco to use our bundled version
@@ -25,6 +26,94 @@ monaco.editor.defineTheme('pycode-dark', {
   },
 });
 
+// Register enhanced Python tokenizer with proper triple-quoted string support
+monaco.languages.setMonarchTokensProvider('python', {
+  defaultToken: '',
+  tokenPostfix: '.python',
+
+  keywords: [
+    'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await',
+    'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except',
+    'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is',
+    'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try',
+    'while', 'with', 'yield',
+  ],
+
+  builtins: [
+    'abs', 'all', 'any', 'bin', 'bool', 'bytearray', 'bytes', 'callable',
+    'chr', 'classmethod', 'compile', 'complex', 'delattr', 'dict', 'dir',
+    'divmod', 'enumerate', 'eval', 'exec', 'filter', 'float', 'format',
+    'frozenset', 'getattr', 'globals', 'hasattr', 'hash', 'help', 'hex',
+    'id', 'input', 'int', 'isinstance', 'issubclass', 'iter', 'len',
+    'list', 'locals', 'map', 'max', 'memoryview', 'min', 'next', 'object',
+    'oct', 'open', 'ord', 'pow', 'print', 'property', 'range', 'repr',
+    'reversed', 'round', 'set', 'setattr', 'slice', 'sorted', 'staticmethod',
+    'str', 'sum', 'super', 'tuple', 'type', 'vars', 'zip',
+  ],
+
+  brackets: [
+    { open: '{', close: '}', token: 'delimiter.curly' },
+    { open: '[', close: ']', token: 'delimiter.bracket' },
+    { open: '(', close: ')', token: 'delimiter.parenthesis' },
+  ],
+
+  tokenizer: {
+    root: [
+      // Triple-quoted strings (must come before single-quoted)
+      [/[fFbBuU]?'''/, 'string', '@tripleString'],
+      [/[fFbBuU]?"""/, 'string', '@tripleDQString'],
+
+      // Regular strings
+      [/[fFbBuU]?'([^'\\]|\\.)*'/, 'string'],
+      [/[fFbBuU]?"([^"\\]|\\.)*"/, 'string'],
+
+      // Decorators
+      [/@[a-zA-Z_]\w*/, 'tag'],
+
+      // Comments
+      [/#.*$/, 'comment'],
+
+      // Numbers
+      [/\b0[xX][0-9a-fA-F_]+\b/, 'number.hex'],
+      [/\b0[oO][0-7_]+\b/, 'number.octal'],
+      [/\b0[bB][01_]+\b/, 'number.binary'],
+      [/\b\d[\d_]*\.[\d_]*([eE][-+]?\d+)?\b/, 'number.float'],
+      [/\b\d[\d_]*[eE][-+]?\d+\b/, 'number.float'],
+      [/\b\d[\d_]*\b/, 'number'],
+
+      // Identifiers and keywords
+      [/[a-zA-Z_]\w*/, {
+        cases: {
+          '@keywords': 'keyword',
+          '@builtins': 'type.identifier',
+          '@default': 'identifier',
+        },
+      }],
+
+      // Operators
+      [/[+\-*/%&|^~<>!=]=?/, 'operator'],
+      [/[{}()\[\]]/, '@brackets'],
+      [/[;,.]/, 'delimiter'],
+    ],
+
+    // Triple single-quoted string state (persists across lines)
+    tripleString: [
+      [/'''/, 'string', '@pop'],
+      [/[^'\\]+/, 'string'],
+      [/\\./, 'string.escape'],
+      [/'/, 'string'],
+    ],
+
+    // Triple double-quoted string state (persists across lines)
+    tripleDQString: [
+      [/"""/, 'string', '@pop'],
+      [/[^"\\]+/, 'string'],
+      [/\\./, 'string.escape'],
+      [/"/, 'string'],
+    ],
+  },
+});
+
 // ─── Python Run CodeLens ────────────────────────────────
 
 let codeLensRegistered = false;
@@ -41,8 +130,21 @@ function registerPythonCodeLens(
     const file = getActiveFile();
     if (!file) return;
     const vfs = vfsRef();
+    const allFiles = vfs.getAllFiles();
+    const source = allFiles[file] || '';
+
+    // Auto-detect Flask/FastAPI apps and start server instead
+    const isFlask = source.includes('Flask(') && source.includes('flask');
+    const isFastAPI = source.includes('FastAPI(') && source.includes('fastapi');
+    if (isFlask || isFastAPI) {
+      emitToTerminal(`\r\n\x1b[90m$ flask run ${file}\x1b[0m\r\n`);
+      syncFilesToWorker(allFiles);
+      startServer(file);
+      return;
+    }
+
     emitToTerminal(`\r\n\x1b[90m$ python ${file}\x1b[0m\r\n`);
-    syncFilesToWorker(vfs.getAllFiles());
+    syncFilesToWorker(allFiles);
     runPythonFile(file);
   });
 

@@ -57,6 +57,49 @@ if '/' not in sys.path:
     sys.path.insert(0, '/')
 `);
 
+  // Write stub modules for packages unavailable in Pyodide (browser)
+  // ssl — needed by FastAPI/httptools/email
+  pyodide.FS.writeFile('/ssl.py', `
+# Stub ssl module for Pyodide (browsers handle SSL natively)
+import sys
+
+PROTOCOL_TLS = 2
+PROTOCOL_TLS_CLIENT = 16
+PROTOCOL_TLS_SERVER = 17
+PROTOCOL_SSLv23 = PROTOCOL_TLS
+OP_NO_SSLv2 = 0x01000000
+OP_NO_SSLv3 = 0x02000000
+HAS_SNI = True
+CERT_NONE = 0
+CERT_OPTIONAL = 1
+CERT_REQUIRED = 2
+_RESTRICTED_SERVER_CIPHERS = ''
+
+class SSLError(OSError): pass
+class SSLZeroReturnError(SSLError): pass
+class SSLWantReadError(SSLError): pass
+class SSLWantWriteError(SSLError): pass
+class SSLSyscallError(SSLError): pass
+class SSLEOFError(SSLError): pass
+class CertificateError(SSLError): pass
+
+class SSLContext:
+    def __init__(self, protocol=PROTOCOL_TLS, *args, **kwargs):
+        self.protocol = protocol
+        self.verify_mode = CERT_NONE
+        self.check_hostname = False
+    def set_default_verify_paths(self): pass
+    def load_default_certs(self, purpose=None): pass
+    def load_cert_chain(self, *a, **kw): pass
+    def set_ciphers(self, s): pass
+    def wrap_socket(self, sock, **kw): return sock
+
+def create_default_context(*a, **kw):
+    return SSLContext(PROTOCOL_TLS_CLIENT)
+
+_create_default_https_context = create_default_context
+`);
+
   pyodide.FS.writeFile('/pycode_backend.py', `
 """
 PyCode custom matplotlib backend for Web Worker rendering.
@@ -303,5 +346,247 @@ ${func}()
         self.postMessage({ type: 'done', success: false });
       }
       break;
+
+    case 'start-server':
+      if (!isReady) {
+        self.postMessage({ type: 'stderr', data: 'Python is still loading...' });
+        return;
+      }
+      syncVirtualFS();
+      pyodide.FS.chdir('/');
+      try {
+        const filename = data.filename;
+        // Determine parent directory
+        const parts = filename.split('/');
+        const parentDir = parts.length > 1 ? '/' + parts.slice(0, -1).join('/') : '/';
+
+        await pyodide.runPythonAsync(`
+import sys, os
+for p in ['/', '', '${parentDir}']:
+    if p not in sys.path:
+        sys.path.insert(0, p)
+os.chdir('${parentDir}')
+`);
+
+        // Read and execute the Flask app file to define the app
+        const code = pyodide.FS.readFile('/' + filename, { encoding: 'utf8' });
+        await pyodide.runPythonAsync(code);
+
+        // Install the WSGI/ASGI adapter
+        await pyodide.runPythonAsync(`
+import io, sys, json, asyncio
+
+async def _pycode_http_handler(method, path, query_string, headers, body):
+    """Handle an HTTP request via WSGI (Flask) or ASGI (FastAPI)."""
+    # Find a web framework app in globals
+    _wsgi_app = None
+    _asgi_app = None
+
+    for _name, _obj in dict(globals()).items():
+        if isinstance(_obj, type):
+            continue
+        # Flask detection (WSGI)
+        if hasattr(_obj, 'wsgi_app') and hasattr(_obj, 'route'):
+            _wsgi_app = _obj
+            break
+        # FastAPI/Starlette detection (ASGI)
+        if hasattr(_obj, 'router') and hasattr(_obj, 'add_api_route'):
+            _asgi_app = _obj
+            break
+
+    if _wsgi_app is not None:
+        return _handle_wsgi(_wsgi_app, method, path, query_string, headers, body)
+    elif _asgi_app is not None:
+        return await _handle_asgi(_asgi_app, method, path, query_string, headers, body)
+    else:
+        return json.dumps({
+            'status': 500,
+            'statusText': 'Internal Server Error',
+            'headers': {'Content-Type': 'text/plain'},
+            'body': 'No Flask or FastAPI app found. Define an app variable in your script.'
+        })
+
+
+def _handle_wsgi(app, method, path, query_string, headers, body):
+    """Call a WSGI app (Flask)."""
+    environ = {
+        'REQUEST_METHOD': method,
+        'PATH_INFO': path,
+        'QUERY_STRING': query_string or '',
+        'SERVER_NAME': 'localhost',
+        'SERVER_PORT': '8000',
+        'SERVER_PROTOCOL': 'HTTP/1.1',
+        'HTTP_HOST': 'localhost:8000',
+        'wsgi.version': (1, 0),
+        'wsgi.url_scheme': 'http',
+        'wsgi.input': io.BytesIO(body.encode('utf-8') if body else b''),
+        'wsgi.errors': sys.stderr,
+        'wsgi.multithread': False,
+        'wsgi.multiprocess': False,
+        'wsgi.run_once': False,
+        'CONTENT_LENGTH': str(len(body.encode('utf-8') if body else b'')),
+    }
+
+    if headers:
+        for key, value in headers.items():
+            key_upper = key.upper().replace('-', '_')
+            if key_upper == 'CONTENT_TYPE':
+                environ['CONTENT_TYPE'] = value
+            else:
+                environ['HTTP_' + key_upper] = value
+
+    _status = ['200 OK']
+    _response_headers = [{}]
+
+    def start_response(status, response_headers, exc_info=None):
+        _status[0] = status
+        _response_headers[0] = dict(response_headers)
+
+    try:
+        result = app.wsgi_app(environ, start_response)
+        response_body = b''.join(result)
+        if hasattr(result, 'close'):
+            result.close()
+
+        status_code = int(_status[0].split(' ', 1)[0])
+        status_text = _status[0].split(' ', 1)[1] if ' ' in _status[0] else 'OK'
+
+        return json.dumps({
+            'status': status_code,
+            'statusText': status_text,
+            'headers': _response_headers[0],
+            'body': response_body.decode('utf-8', errors='replace'),
+        })
+    except Exception as e:
+        return json.dumps({
+            'status': 500,
+            'statusText': 'Internal Server Error',
+            'headers': {'Content-Type': 'text/plain'},
+            'body': f'WSGI Error: {str(e)}',
+        })
+
+
+async def _handle_asgi(app, method, path, query_string, headers, body):
+    """Call an ASGI app (FastAPI/Starlette)."""
+    scope = {
+        'type': 'http',
+        'asgi': {'version': '3.0'},
+        'http_version': '1.1',
+        'method': method,
+        'path': path,
+        'query_string': (query_string or '').encode('utf-8'),
+        'root_path': '',
+        'scheme': 'http',
+        'server': ('localhost', 8000),
+        'headers': [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()],
+    }
+
+    body_bytes = body.encode('utf-8') if body else b''
+    response_started = False
+    status_code = 200
+    response_headers = {}
+    response_body = b''
+
+    async def receive():
+        return {'type': 'http.request', 'body': body_bytes, 'more_body': False}
+
+    async def send(message):
+        nonlocal response_started, status_code, response_headers, response_body
+        if message['type'] == 'http.response.start':
+            response_started = True
+            status_code = message.get('status', 200)
+            raw_headers = message.get('headers', [])
+            response_headers = {}
+            for h in raw_headers:
+                name = h[0].decode('utf-8') if isinstance(h[0], bytes) else h[0]
+                val = h[1].decode('utf-8') if isinstance(h[1], bytes) else h[1]
+                response_headers[name] = val
+        elif message['type'] == 'http.response.body':
+            response_body += message.get('body', b'')
+
+    try:
+        await app(scope, receive, send)
+        return json.dumps({
+            'status': status_code,
+            'statusText': 'OK',
+            'headers': response_headers,
+            'body': response_body.decode('utf-8', errors='replace'),
+        })
+    except Exception as e:
+        return json.dumps({
+            'status': 500,
+            'statusText': 'Internal Server Error',
+            'headers': {'Content-Type': 'text/plain'},
+            'body': f'ASGI Error: {str(e)}',
+        })
+`);
+
+        self.postMessage({ type: 'stdout', data: '🚀 Server started! Preview at /pycode-server/' });
+        self.postMessage({ type: 'server-started' });
+        self.postMessage({ type: 'done', success: true });
+      } catch (err) {
+        self.postMessage({ type: 'stderr', data: 'Failed to start server: ' + err.message });
+        self.postMessage({ type: 'done', success: false });
+      }
+      break;
+
+    case 'stop-server':
+      try {
+        await pyodide.runPythonAsync(`
+try:
+    del _pycode_http_handler
+    del _handle_wsgi
+    del _handle_asgi
+except NameError:
+    pass
+`);
+        self.postMessage({ type: 'stdout', data: '⏹️ Server stopped.' });
+        self.postMessage({ type: 'server-stopped' });
+      } catch (err) {
+        self.postMessage({ type: 'stderr', data: err.message });
+      }
+      break;
+
+    case 'http-request': {
+      if (!isReady) {
+        self.postMessage({
+          type: 'http-response',
+          data: { reqId: data.reqId, status: 503, statusText: 'Unavailable', headers: {}, body: 'Python not ready' }
+        });
+        return;
+      }
+      try {
+        const { reqId, method, path, queryString, headers, body } = data;
+
+        // Pass data via Pyodide globals to avoid string escaping issues
+        pyodide.globals.set('_req_method', method);
+        pyodide.globals.set('_req_path', path);
+        pyodide.globals.set('_req_qs', queryString || '');
+        pyodide.globals.set('_req_headers', pyodide.toPy(headers || {}));
+        pyodide.globals.set('_req_body', body || '');
+
+        const resultJson = await pyodide.runPythonAsync(`
+await _pycode_http_handler(_req_method, _req_path, _req_qs, dict(_req_headers), _req_body)
+`);
+
+        const result = JSON.parse(resultJson);
+        self.postMessage({
+          type: 'http-response',
+          data: { reqId, ...result }
+        });
+      } catch (err) {
+        self.postMessage({
+          type: 'http-response',
+          data: {
+            reqId: data.reqId,
+            status: 500,
+            statusText: 'Internal Server Error',
+            headers: { 'Content-Type': 'text/plain' },
+            body: 'Worker Error: ' + err.message,
+          }
+        });
+      }
+      break;
+    }
   }
 };

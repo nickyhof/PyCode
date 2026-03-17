@@ -2,6 +2,7 @@ import { useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { useDialog } from '../components/Dialog/Dialog';
 import { syncFilesToWorker, runPythonFile } from '../services/pyodide';
+import { startServer } from '../services/webServer';
 
 export function useKeyboard() {
   const { state, dispatch, vfs } = useApp();
@@ -68,7 +69,16 @@ export function useKeyboard() {
         // Sync VFS files and run
         const files = vfs.getAllFiles();
         syncFilesToWorker(files);
-        setTimeout(() => runPythonFile(file), 50);
+
+        // Auto-detect Flask/FastAPI apps and start server instead
+        const source = files[file] || '';
+        const isFlask = source.includes('Flask(') && source.includes('flask');
+        const isFastAPI = source.includes('FastAPI(') && source.includes('fastapi');
+        if (isFlask || isFastAPI) {
+          startServer(file);
+        } else {
+          setTimeout(() => runPythonFile(file), 50);
+        }
       }
 
       // Ctrl+Shift+E — Explorer

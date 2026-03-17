@@ -846,11 +846,62 @@ kbd {
   color: var(--fg-secondary);
   border-bottom: 1px solid transparent;
   transition: color var(--transition-fast);
+  cursor: pointer;
+}
+
+.panel-tab:hover {
+  color: var(--fg-bright);
 }
 
 .panel-tab.active {
   color: var(--fg-bright);
   border-bottom-color: var(--border-active);
+}
+
+/* --- Preview Panel --- */
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.preview-url-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.preview-url-bar .codicon {
+  color: var(--fg-secondary);
+  font-size: 14px;
+}
+
+.preview-url-input {
+  flex: 1;
+  background: var(--bg-input);
+  color: var(--fg-bright);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.preview-url-input:focus {
+  border-color: var(--fg-accent);
+}
+
+.preview-iframe {
+  flex: 1;
+  border: none;
+  background: #fff;
+  width: 100%;
 }
 
 .panel-actions {

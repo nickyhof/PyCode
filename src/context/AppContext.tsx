@@ -7,6 +7,7 @@ import { createContext, useContext, useReducer, useRef, useEffect, useCallback, 
 import { VirtualFileSystem } from '../services/vfs';
 import { initPyodideWorker, postToWorker } from '../services/pyodide';
 import { openLocalFolder as openLocalFolderService, saveFileToLocal, saveAllToLocal } from '../services/localFs';
+import { registerServiceWorker, handleHttpResponse } from '../services/webServer';
 import type { Tab, SidebarPanel, AppSettings } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
 
@@ -272,12 +273,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (type === 'ready') {
         dispatch({ type: 'SET_PYODIDE_READY', ready: true });
       }
+      // Route HTTP responses back to the Service Worker bridge
+      if (type === 'http-response' && fullMsg?.data) {
+        handleHttpResponse(fullMsg.data as {
+          reqId: number; status: number; statusText: string;
+          headers: Record<string, string>; body: string;
+        });
+        return;
+      }
       // Forward all messages to listeners (terminal, notebook, etc.)
       for (const listener of listenersRef.current) {
         listener(type, data, fullMsg);
       }
     });
     postToWorker('init');
+
+    // Register the Service Worker for the virtual web server
+    registerServiceWorker();
 
     // Check for shared code in the URL hash
     (async () => {

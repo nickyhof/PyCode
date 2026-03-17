@@ -8,6 +8,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { useApp } from '../../context/AppContext';
 import { syncFilesToWorker, runPythonFile, runPythonCode, installPackage } from '../../services/pyodide';
+import { startServer, stopServer } from '../../services/webServer';
 import * as Git from '../../services/git';
 
 interface TerminalPanelProps {
@@ -24,6 +25,10 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
   const handleCommandRef = useRef<(cmd: string) => void>(() => {});
   const runningRef = useRef(false);
   const [plotImages, setPlotImages] = useState<string[]>([]);
+  const [activePanel, setActivePanel] = useState<'terminal' | 'preview'>('terminal');
+  const [previewUrl, setPreviewUrl] = useState('/pycode-server/');
+  const [serverActive, setServerActive] = useState(false);
+  const previewRef = useRef<HTMLIFrameElement>(null);
 
   const writePrompt = useCallback(() => {
     const term = termRef.current;
@@ -641,6 +646,33 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
         runPythonCode(code);
         return;
       }
+      case 'flask': {
+        const flaskArgs = parts.slice(1);
+        if (flaskArgs[0] === 'run' && flaskArgs[1]) {
+          const filename = flaskArgs[1];
+          if (!state.pyodideReady) {
+            term.write('\r\n\x1b[33m⚠ Python is still loading...\x1b[0m');
+            break;
+          }
+          term.write(`\r\n\x1b[36mStarting Flask server with ${filename}...\x1b[0m`);
+          runningRef.current = true;
+          syncFilesToWorker(vfs.getAllFiles());
+          startServer(filename);
+          return;
+        }
+        term.write('\r\n\x1b[33mUsage: flask run <file.py>\x1b[0m');
+        break;
+      }
+      case 'server': {
+        if (parts[1] === 'stop') {
+          stopServer();
+          setServerActive(false);
+          term.write('\r\n\x1b[36mStopping server...\x1b[0m');
+          break;
+        }
+        term.write('\r\n\x1b[33mUsage: server stop\x1b[0m');
+        break;
+      }
       case 'help':
         term.write('\r\n\x1b[36mAvailable commands:\x1b[0m');
         term.write('\r\n  clear                Clear the terminal');
@@ -656,6 +688,8 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
         term.write('\r\n  uv remove <pkg>     Remove dependency');
         term.write('\r\n  uv pip install <p>  Install a package');
         term.write('\r\n  uv pip list         List installed packages');
+        term.write('\r\n  flask run <file>     Start a Flask web server');
+        term.write('\r\n  server stop          Stop the web server');
         term.write('\r\n  exec <code>          Execute Python code');
         term.write('\r\n  bazel query          List all targets');
         term.write('\r\n  bazel build <t>      Syntax-check a target');
@@ -698,17 +732,35 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
       if (!term) return;
 
       switch (msgType) {
-        case 'stdout':
-          term.write(`\r\n${data as string}`);
+        case 'stdout': {
+          const text = (data as string).replace(/\n/g, '\r\n');
+          term.write(`\r\n${text}`);
           break;
-        case 'stderr':
-          term.write(`\r\n\x1b[31m${data as string}\x1b[0m`);
+        }
+        case 'stderr': {
+          const errText = (data as string).replace(/\n/g, '\r\n');
+          term.write(`\r\n\x1b[31m${errText}\x1b[0m`);
           break;
+        }
         case 'image':
           // Plot image received from matplotlib
           if (typeof data === 'string') {
             setPlotImages(prev => [...prev, data]);
           }
+          break;
+        case 'server-started':
+          setServerActive(true);
+          setActivePanel('preview');
+          // Refresh the preview iframe
+          setTimeout(() => {
+            if (previewRef.current) {
+              previewRef.current.src = previewUrl;
+            }
+          }, 100);
+          break;
+        case 'server-stopped':
+          setServerActive(false);
+          setActivePanel('terminal');
           break;
         case 'done':
           runningRef.current = false;
@@ -817,12 +869,61 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
     <div id="panel" className={collapsed ? 'collapsed' : ''}>
       <div id="panel-header">
         <div className="panel-tabs">
-          <div className="panel-tab active">
+          <div
+            className={`panel-tab${activePanel === 'terminal' ? ' active' : ''}`}
+            onClick={() => setActivePanel('terminal')}
+          >
             <span className="codicon codicon-terminal" />
             Terminal
           </div>
+          {serverActive && (
+            <div
+              className={`panel-tab${activePanel === 'preview' ? ' active' : ''}`}
+              onClick={() => setActivePanel('preview')}
+            >
+              <span className="codicon codicon-globe" />
+              Preview
+            </div>
+          )}
         </div>
         <div className="panel-actions" style={{ display: 'flex', gap: 2 }}>
+          {activePanel === 'preview' && (
+            <>
+              <button
+                className="icon-btn"
+                title="Open in New Tab"
+                onClick={() => window.open(previewUrl, '_blank')}
+              >
+                <span className="codicon codicon-link-external" />
+              </button>
+              <button
+                className="icon-btn"
+                title="Refresh Preview"
+                onClick={() => {
+                  if (previewRef.current) previewRef.current.src = previewUrl;
+                }}
+              >
+                <span className="codicon codicon-refresh" />
+              </button>
+              <button
+                className="icon-btn"
+                title="Stop Server"
+                style={{ color: '#f44336' }}
+                onClick={() => {
+                  stopServer();
+                  setServerActive(false);
+                  setActivePanel('terminal');
+                  const term = termRef.current;
+                  if (term) {
+                    term.write('\r\n\x1b[36m⏹️ Server stopped.\x1b[0m');
+                    writePrompt();
+                  }
+                }}
+              >
+                <span className="codicon codicon-debug-stop" />
+              </button>
+            </>
+          )}
           <button className="icon-btn" title="Clear" onClick={handleClear}>
             <span className="codicon codicon-clear-all" />
           </button>
@@ -831,42 +932,81 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
           </button>
         </div>
       </div>
-      {/* Plot images panel */}
-      {plotImages.length > 0 && (
-        <div className="terminal-plots">
-          <div className="terminal-plots-header">
-            <span className="terminal-plots-title">
-              <span className="codicon codicon-graph" /> Plots ({plotImages.length})
-            </span>
+
+      {/* Terminal view */}
+      <div style={{ display: activePanel === 'terminal' ? 'flex' : 'none', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+        {/* Plot images panel */}
+        {plotImages.length > 0 && (
+          <div className="terminal-plots">
+            <div className="terminal-plots-header">
+              <span className="terminal-plots-title">
+                <span className="codicon codicon-graph" /> Plots ({plotImages.length})
+              </span>
+              <button
+                className="icon-btn"
+                title="Clear All Plots"
+                onClick={() => setPlotImages([])}
+              >
+                <span className="codicon codicon-close-all" />
+              </button>
+            </div>
+            <div className="terminal-plots-scroll">
+              {plotImages.map((src, i) => (
+                <div key={i} className="terminal-plot-item">
+                  <img src={src} alt={`Plot ${i + 1}`} className="terminal-plot-img" />
+                  <button
+                    className="terminal-plot-close"
+                    title="Remove"
+                    onClick={() => setPlotImages(prev => prev.filter((_, j) => j !== i))}>
+                    <span className="codicon codicon-close" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div
+          id="terminal-container"
+          ref={termContainerRef}
+          style={{ flex: 1, overflow: 'hidden' }}
+        />
+      </div>
+
+      {/* Preview view */}
+      {activePanel === 'preview' && (
+        <div className="preview-panel">
+          <div className="preview-url-bar">
+            <span className="codicon codicon-globe" />
+            <input
+              type="text"
+              value={previewUrl}
+              onChange={(e) => setPreviewUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && previewRef.current) {
+                  previewRef.current.src = previewUrl;
+                }
+              }}
+              className="preview-url-input"
+            />
             <button
               className="icon-btn"
-              title="Clear All Plots"
-              onClick={() => setPlotImages([])}
+              title="Go"
+              onClick={() => {
+                if (previewRef.current) previewRef.current.src = previewUrl;
+              }}
             >
-              <span className="codicon codicon-close-all" />
+              <span className="codicon codicon-arrow-right" />
             </button>
           </div>
-          <div className="terminal-plots-scroll">
-            {plotImages.map((src, i) => (
-              <div key={i} className="terminal-plot-item">
-                <img src={src} alt={`Plot ${i + 1}`} className="terminal-plot-img" />
-                <button
-                  className="terminal-plot-close"
-                  title="Remove"
-                  onClick={() => setPlotImages(prev => prev.filter((_, j) => j !== i))}
-                >
-                  <span className="codicon codicon-close" />
-                </button>
-              </div>
-            ))}
-          </div>
+          <iframe
+            ref={previewRef}
+            src={previewUrl}
+            className="preview-iframe"
+            title="Web Server Preview"
+            sandbox="allow-same-origin allow-scripts"
+          />
         </div>
       )}
-      <div
-        id="terminal-container"
-        ref={termContainerRef}
-        style={{ flex: 1, overflow: 'hidden' }}
-      />
     </div>
   );
 }
