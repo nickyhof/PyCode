@@ -24,6 +24,9 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
   const cmdBufRef = useRef('');
   const handleCommandRef = useRef<(cmd: string) => void>(() => {});
   const runningRef = useRef(false);
+  const historyRef = useRef<string[]>([]);
+  const historyIdxRef = useRef(-1);
+  const savedCmdRef = useRef('');
   const [plotImages, setPlotImages] = useState<string[]>([]);
   const [activePanel, setActivePanel] = useState<'terminal' | 'preview'>('terminal');
   const [previewUrl, setPreviewUrl] = useState('/pycode-server/');
@@ -332,44 +335,97 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
         term.clear();
         break;
       case 'ls': {
+        const listPath = parts[1] === '-l' ? parts[2] : parts[1];
+        const detailed = parts[1] === '-l';
         const tree = vfs.tree();
-        const children = Object.values(tree.children).sort((a, b) => {
+
+        // Navigate to subdirectory if specified
+        let target = tree;
+        if (listPath && listPath !== '-l') {
+          const pathParts = listPath.replace(/\/$/, '').split('/');
+          for (const p of pathParts) {
+            if (target.children[p] && target.children[p].type === 'directory') {
+              target = target.children[p] as typeof tree;
+            } else {
+              term.write(`\r\n\x1b[31mNo such directory: ${listPath}\x1b[0m`);
+              break;
+            }
+          }
+        }
+
+        const children = Object.values(target.children || {}).sort((a, b) => {
           if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
           return a.name.localeCompare(b.name);
         });
-        for (const child of children) {
-          if (child.type === 'directory') {
-            term.write(`\r\n\x1b[34m${child.name}/\x1b[0m`);
-          } else {
-            term.write(`\r\n${child.name}`);
+
+        const colorFile = (name: string, type: string) => {
+          if (type === 'directory') return `\x1b[1;34m${name}/\x1b[0m`;
+          if (name.endsWith('.py')) return `\x1b[32m${name}\x1b[0m`;
+          if (name.endsWith('.ipynb')) return `\x1b[35m${name}\x1b[0m`;
+          if (name.endsWith('.toml') || name.endsWith('.json') || name.endsWith('.yml') || name.endsWith('.yaml')) return `\x1b[33m${name}\x1b[0m`;
+          if (name.endsWith('.md') || name.endsWith('.txt')) return `\x1b[36m${name}\x1b[0m`;
+          return name;
+        };
+
+        if (detailed) {
+          for (const child of children) {
+            const entry = vfs.get(child.path);
+            const sizeStr = child.type === 'directory' ? '   -' : String(entry?.content?.length ?? 0).padStart(6);
+            const typeStr = child.type === 'directory' ? '\x1b[90mdir \x1b[0m' : '\x1b[90mfile\x1b[0m';
+            term.write(`\r\n  ${typeStr}  ${sizeStr}  ${colorFile(child.name, child.type)}`);
+          }
+        } else {
+          for (const child of children) {
+            term.write(`\r\n  ${colorFile(child.name, child.type)}`);
           }
         }
         break;
       }
       case 'cat': {
-        const path = parts[1];
-        if (!path) { term.write('\r\n\x1b[33mUsage: cat <file>\x1b[0m'); break; }
+        const showLines = parts[1] === '-n';
+        const path = showLines ? parts[2] : parts[1];
+        if (!path) { term.write('\r\n\x1b[33mUsage: cat [-n] <file>\x1b[0m'); break; }
         const entry = vfs.get(path);
         if (!entry || entry.type !== 'file') {
           term.write(`\r\n\x1b[31mFile not found: ${path}\x1b[0m`);
+        } else if (showLines) {
+          const lines = (entry.content ?? '').split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            term.write(`\r\n\x1b[90m${String(i + 1).padStart(4)}\x1b[0m  ${lines[i]}`);
+          }
         } else {
-          term.write(`\r\n${entry.content}`);
+          const text = (entry.content ?? '').replace(/\n/g, '\r\n');
+          term.write(`\r\n${text}`);
         }
         break;
       }
       case 'python':
       case 'python3': {
-        const file = parts[1];
-        if (!file) {
-          term.write('\r\n\x1b[33mUsage: python <file.py>\x1b[0m');
-          break;
-        }
         if (!state.pyodideReady) {
           term.write('\r\n\x1b[33m⚠ Python is still loading...\x1b[0m');
           break;
         }
-        const entry = vfs.get(file);
-        if (!entry || entry.type !== 'file') {
+        // python -c "code"
+        if (parts[1] === '-c') {
+          const codeStr = cmd.trim().replace(/^python3?\s+-c\s+/, '').replace(/^["']|["']$/g, '');
+          if (!codeStr) {
+            term.write('\r\n\x1b[33mUsage: python -c "code"\x1b[0m');
+            break;
+          }
+          term.write(`\r\n\x1b[90m>>> ${codeStr}\x1b[0m`);
+          runningRef.current = true;
+          syncAndRun(() => runPythonCode(codeStr));
+          return;
+        }
+        // python (no args) — hint
+        const file = parts[1];
+        if (!file) {
+          term.write('\r\n\x1b[36mPython ' + '3.12 (Pyodide)\x1b[0m');
+          term.write('\r\n\x1b[90mUse "exec <code>" or "python -c <code>" to run inline Python\x1b[0m');
+          break;
+        }
+        const pyEntry = vfs.get(file);
+        if (!pyEntry || pyEntry.type !== 'file') {
           term.write(`\r\n\x1b[31mFile not found: ${file}\x1b[0m`);
           break;
         }
@@ -673,44 +729,267 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
         term.write('\r\n\x1b[33mUsage: server stop\x1b[0m');
         break;
       }
+      case 'head': {
+        const file = parts[1];
+        const n = parts[2] ? parseInt(parts[2]) : 10;
+        if (!file) { term.write('\r\n\x1b[33mUsage: head <file> [lines]\x1b[0m'); break; }
+        const entry = vfs.get(file);
+        if (!entry || entry.type !== 'file') { term.write(`\r\n\x1b[31mFile not found: ${file}\x1b[0m`); break; }
+        const lines = (entry.content ?? '').split('\n').slice(0, n);
+        for (const line of lines) term.write(`\r\n${line}`);
+        break;
+      }
+      case 'tail': {
+        const file = parts[1];
+        const n = parts[2] ? parseInt(parts[2]) : 10;
+        if (!file) { term.write('\r\n\x1b[33mUsage: tail <file> [lines]\x1b[0m'); break; }
+        const entry = vfs.get(file);
+        if (!entry || entry.type !== 'file') { term.write(`\r\n\x1b[31mFile not found: ${file}\x1b[0m`); break; }
+        const lines = (entry.content ?? '').split('\n');
+        const lastLines = lines.slice(Math.max(0, lines.length - n));
+        for (const line of lastLines) term.write(`\r\n${line}`);
+        break;
+      }
+      case 'wc': {
+        const file = parts[1];
+        if (!file) { term.write('\r\n\x1b[33mUsage: wc <file>\x1b[0m'); break; }
+        const entry = vfs.get(file);
+        if (!entry || entry.type !== 'file') { term.write(`\r\n\x1b[31mFile not found: ${file}\x1b[0m`); break; }
+        const content = entry.content ?? '';
+        const lineCount = content.split('\n').length;
+        const wordCount = content.split(/\s+/).filter(w => w).length;
+        const charCount = content.length;
+        term.write(`\r\n  \x1b[36m${String(lineCount).padStart(6)}\x1b[0m lines  \x1b[36m${String(wordCount).padStart(6)}\x1b[0m words  \x1b[36m${String(charCount).padStart(6)}\x1b[0m chars  ${file}`);
+        break;
+      }
+      case 'grep': {
+        const pattern = parts[1];
+        const targetFile = parts[2];
+        if (!pattern) { term.write('\r\n\x1b[33mUsage: grep <pattern> [file]\x1b[0m'); break; }
+        const allFiles = vfs.getAllFiles();
+        const filesToSearch = targetFile ? { [targetFile]: allFiles[targetFile] } : allFiles;
+        let found = 0;
+        for (const [fpath, content] of Object.entries(filesToSearch)) {
+          if (!content) continue;
+          const lines = content.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(pattern)) {
+              const highlighted = lines[i].replace(
+                new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                `\x1b[1;31m${pattern}\x1b[0m`
+              );
+              term.write(`\r\n\x1b[35m${fpath}\x1b[0m:\x1b[90m${i + 1}\x1b[0m: ${highlighted}`);
+              found++;
+            }
+          }
+        }
+        if (found === 0) term.write(`\r\n\x1b[90mNo matches found for "${pattern}"\x1b[0m`);
+        break;
+      }
+      case 'history': {
+        const hist = historyRef.current;
+        if (hist.length === 0) {
+          term.write('\r\n\x1b[90mNo history\x1b[0m');
+        } else {
+          for (let i = 0; i < hist.length; i++) {
+            term.write(`\r\n  \x1b[90m${String(i + 1).padStart(4)}\x1b[0m  ${hist[i]}`);
+          }
+        }
+        break;
+      }
+      case 'date':
+        term.write(`\r\n${new Date().toString()}`);
+        break;
+      case 'whoami':
+        term.write('\r\npycode');
+        break;
+      case 'which': {
+        const cmdName = parts[1];
+        if (!cmdName) { term.write('\r\n\x1b[33mUsage: which <command>\x1b[0m'); break; }
+        const KNOWN = [
+          'ls', 'cat', 'tree', 'touch', 'mkdir', 'rm', 'cp', 'mv', 'echo', 'pwd', 'clear',
+          'head', 'tail', 'wc', 'grep', 'history', 'date', 'whoami', 'which',
+          'python', 'python3', 'exec', 'pip', 'uv', 'flask', 'server',
+          'git', 'bazel', 'help',
+        ];
+        if (KNOWN.includes(cmdName)) {
+          term.write(`\r\n\x1b[32m${cmdName}\x1b[0m: built-in command`);
+        } else {
+          term.write(`\r\n\x1b[31m${cmdName} not found\x1b[0m`);
+        }
+        break;
+      }
+      case 'pwd':
+        term.write('\r\n/');
+        break;
+      case 'mkdir': {
+        const dir = parts[1];
+        if (!dir) { term.write('\r\n\x1b[33mUsage: mkdir <dir>\x1b[0m'); break; }
+        // Create a placeholder file so the directory appears in VFS
+        const placeholder = dir.replace(/\/$/, '') + '/.keep';
+        vfs.set(placeholder, '');
+        dispatch({ type: 'VFS_CHANGED' });
+        term.write(`\r\n\x1b[32mCreated directory: ${dir}\x1b[0m`);
+        break;
+      }
+      case 'touch': {
+        const file = parts[1];
+        if (!file) { term.write('\r\n\x1b[33mUsage: touch <file>\x1b[0m'); break; }
+        if (!vfs.get(file)) {
+          vfs.set(file, '');
+          dispatch({ type: 'VFS_CHANGED' });
+        }
+        break;
+      }
+      case 'rm': {
+        const file = parts[1];
+        if (!file) { term.write('\r\n\x1b[33mUsage: rm <file>\x1b[0m'); break; }
+        const entry = vfs.get(file);
+        if (!entry) {
+          term.write(`\r\n\x1b[31mNot found: ${file}\x1b[0m`);
+        } else {
+          vfs.delete(file);
+          dispatch({ type: 'VFS_CHANGED' });
+          dispatch({ type: 'CLOSE_TAB', path: file });
+          term.write(`\r\n\x1b[32mRemoved: ${file}\x1b[0m`);
+        }
+        break;
+      }
+      case 'mv': {
+        const src = parts[1], dst = parts[2];
+        if (!src || !dst) { term.write('\r\n\x1b[33mUsage: mv <src> <dst>\x1b[0m'); break; }
+        const entry = vfs.get(src);
+        if (!entry || entry.type !== 'file') {
+          term.write(`\r\n\x1b[31mNot found: ${src}\x1b[0m`);
+        } else {
+          vfs.set(dst, entry.content ?? '');
+          vfs.delete(src);
+          dispatch({ type: 'VFS_CHANGED' });
+          dispatch({ type: 'CLOSE_TAB', path: src });
+          dispatch({ type: 'OPEN_FILE', path: dst });
+          term.write(`\r\n\x1b[32m${src} → ${dst}\x1b[0m`);
+        }
+        break;
+      }
+      case 'cp': {
+        const src = parts[1], dst = parts[2];
+        if (!src || !dst) { term.write('\r\n\x1b[33mUsage: cp <src> <dst>\x1b[0m'); break; }
+        const entry = vfs.get(src);
+        if (!entry || entry.type !== 'file') {
+          term.write(`\r\n\x1b[31mNot found: ${src}\x1b[0m`);
+        } else {
+          vfs.set(dst, entry.content ?? '');
+          dispatch({ type: 'VFS_CHANGED' });
+          term.write(`\r\n\x1b[32mCopied ${src} → ${dst}\x1b[0m`);
+        }
+        break;
+      }
+      case 'echo': {
+        const rest = cmd.trim().slice(5);
+        const redirectMatch = rest.match(/^(.*?)\s*>\s*(\S+)$/);
+        if (redirectMatch) {
+          const text = redirectMatch[1].replace(/^["']|["']$/g, '');
+          const file = redirectMatch[2];
+          vfs.set(file, text + '\n');
+          dispatch({ type: 'VFS_CHANGED' });
+        } else {
+          term.write(`\r\n${rest.replace(/^["']|["']$/g, '')}`);
+        }
+        break;
+      }
+      case 'tree': {
+        const allFiles = Object.keys(vfs.getAllFiles()).sort();
+        const printTree = (files: string[]) => {
+          // Build a nested structure
+          const root: Record<string, unknown> = {};
+          for (const file of files) {
+            const parts = file.split('/');
+            let current = root;
+            for (const part of parts) {
+              if (!current[part]) current[part] = {};
+              current = current[part] as Record<string, unknown>;
+            }
+          }
+          // Recursively print
+          const render = (node: Record<string, unknown>, prefix: string) => {
+            const keys = Object.keys(node).sort((a, b) => {
+              const aIsDir = Object.keys(node[a] as object).length > 0;
+              const bIsDir = Object.keys(node[b] as object).length > 0;
+              if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+              return a.localeCompare(b);
+            });
+            keys.forEach((key, idx) => {
+              const isLast = idx === keys.length - 1;
+              const connector = isLast ? '└── ' : '├── ';
+              const childNode = node[key] as Record<string, unknown>;
+              const isDir = Object.keys(childNode).length > 0;
+              const colored = isDir ? `\x1b[1;34m${key}\x1b[0m` : (
+                key.endsWith('.py') ? `\x1b[32m${key}\x1b[0m` :
+                key.endsWith('.ipynb') ? `\x1b[35m${key}\x1b[0m` :
+                key.endsWith('.toml') || key.endsWith('.json') ? `\x1b[33m${key}\x1b[0m` : key
+              );
+              term.write(`\r\n${prefix}${connector}${colored}`);
+              if (isDir) {
+                render(childNode, prefix + (isLast ? '    ' : '│   '));
+              }
+            });
+          };
+          term.write('\r\n\x1b[1;34m.\x1b[0m');
+          render(root, '');
+          term.write(`\r\n\r\n\x1b[90m${files.length} files\x1b[0m`);
+        };
+        printTree(allFiles);
+        break;
+      }
       case 'help':
-        term.write('\r\n\x1b[36mAvailable commands:\x1b[0m');
-        term.write('\r\n  clear                Clear the terminal');
-        term.write('\r\n  ls                   List files');
-        term.write('\r\n  cat <file>           Display file contents');
-        term.write('\r\n  python <file>        Run a Python file');
-        term.write('\r\n  pip install <pkg>    Install a package');
-        term.write('\r\n  pip list             List installed packages');
-        term.write('\r\n  uv sync             Install from pyproject.toml');
-        term.write('\r\n  uv init             Create pyproject.toml');
-        term.write('\r\n  uv run <file>       Run a Python file');
-        term.write('\r\n  uv add <pkg>        Add and install dependency');
-        term.write('\r\n  uv remove <pkg>     Remove dependency');
-        term.write('\r\n  uv pip install <p>  Install a package');
-        term.write('\r\n  uv pip list         List installed packages');
-        term.write('\r\n  flask run <file>     Start a Flask web server');
-        term.write('\r\n  server stop          Stop the web server');
-        term.write('\r\n  exec <code>          Execute Python code');
-        term.write('\r\n  bazel query          List all targets');
-        term.write('\r\n  bazel build <t>      Syntax-check a target');
-        term.write('\r\n  bazel run <target>   Run a Bazel target');
-        term.write('\r\n  bazel test <target>  Run a test target');
-        term.write('\r\n  bazel clean          Clear build state');
         term.write('\r\n');
-        term.write('\r\n\x1b[36mGit commands:\x1b[0m');
-        term.write('\r\n  git init             Initialize a repository');
-        term.write('\r\n  git clone <url>      Clone a repository');
-        term.write('\r\n  git status           Show working tree status');
-        term.write('\r\n  git add <file|.>     Stage changes');
-        term.write('\r\n  git commit -m "msg"  Commit staged changes');
-        term.write('\r\n  git log              Show commit history');
-        term.write('\r\n  git branch [name]    List or create branches');
-        term.write('\r\n  git checkout <br>    Switch branches');
-        term.write('\r\n  git diff <file>      Show file diff');
-        term.write('\r\n  git push             Push to remote');
-        term.write('\r\n  git pull             Pull from remote');
-        term.write('\r\n  git reset <f|--hard> Reset file or all changes');
-        term.write('\r\n  help                 Show this help');
+        term.write('\r\n\x1b[1;36m  Filesystem\x1b[0m');
+        term.write('\r\n    ls [-l] [dir]        List files (colored)');
+        term.write('\r\n    cat [-n] <file>      Display file contents');
+        term.write('\r\n    head <file> [n]      First n lines (default 10)');
+        term.write('\r\n    tail <file> [n]      Last n lines (default 10)');
+        term.write('\r\n    wc <file>            Line, word, char count');
+        term.write('\r\n    grep <pat> [file]    Search in files');
+        term.write('\r\n    tree                 Show file tree');
+        term.write('\r\n    touch <file>         Create empty file');
+        term.write('\r\n    mkdir <dir>          Create directory');
+        term.write('\r\n    rm <file>            Remove a file');
+        term.write('\r\n    cp <src> <dst>       Copy a file');
+        term.write('\r\n    mv <src> <dst>       Move/rename a file');
+        term.write('\r\n    echo <text> [> f]    Print or redirect');
+        term.write('\r\n    pwd                  Working directory');
+        term.write('\r\n    clear                Clear terminal');
+        term.write('\r\n');
+        term.write('\r\n\x1b[1;36m  Python\x1b[0m');
+        term.write('\r\n    python <file>        Run a Python file');
+        term.write('\r\n    python -c "code"     Execute inline code');
+        term.write('\r\n    exec <code>          Execute Python inline');
+        term.write('\r\n    pip install <pkg>    Install a package');
+        term.write('\r\n    pip list             List packages');
+        term.write('\r\n');
+        term.write('\r\n\x1b[1;36m  UV\x1b[0m');
+        term.write('\r\n    uv init               Create pyproject.toml');
+        term.write('\r\n    uv sync               Install dependencies');
+        term.write('\r\n    uv run <file>          Run via uv');
+        term.write('\r\n    uv add/remove <pkg>   Manage dependencies');
+        term.write('\r\n');
+        term.write('\r\n\x1b[1;36m  Web Server\x1b[0m');
+        term.write('\r\n    flask run <file>       Start Flask/FastAPI');
+        term.write('\r\n    server stop            Stop the server');
+        term.write('\r\n');
+        term.write('\r\n\x1b[1;36m  Git\x1b[0m');
+        term.write('\r\n    git clone/status/add/commit/push/pull/log');
+        term.write('\r\n    git branch/checkout/diff/reset');
+        term.write('\r\n');
+        term.write('\r\n\x1b[1;36m  Bazel\x1b[0m');
+        term.write('\r\n    bazel query/build/run/test/clean');
+        term.write('\r\n\x1b[1;36m  Utilities\x1b[0m');
+        term.write('\r\n    history              Command history');
+        term.write('\r\n    which <cmd>          Check if command exists');
+        term.write('\r\n    date                 Current date/time');
+        term.write('\r\n    whoami               Current user');
+        term.write('\r\n');
+        term.write('\r\n  \x1b[90m↑↓ History  Tab Complete  Ctrl+C Cancel  Ctrl+U Clear\x1b[0m');
         break;
       default:
         term.write(`\r\n\x1b[31mCommand not found: ${command}\x1b[0m`);
@@ -812,29 +1091,145 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
     term.open(termContainerRef.current);
     fit.fit();
 
-    term.writeln('\x1b[36m╔═══════════════════════════════════════╗\x1b[0m');
-    term.writeln('\x1b[36m║          PyCode Terminal              ║\x1b[0m');
-    term.writeln('\x1b[36m╚═══════════════════════════════════════╝\x1b[0m');
     term.writeln('');
-    term.writeln('\x1b[90mType "help" for available commands\x1b[0m');
+    term.writeln('  \x1b[1;36m┌───────────────────────────────────┐\x1b[0m');
+    term.writeln('  \x1b[1;36m│\x1b[0m  \x1b[1;37m⚡ PyCode Terminal\x1b[0m                \x1b[1;36m│\x1b[0m');
+    term.writeln('  \x1b[1;36m│\x1b[0m  \x1b[90mPython in the browser\x1b[0m            \x1b[1;36m│\x1b[0m');
+    term.writeln('  \x1b[1;36m└───────────────────────────────────┘\x1b[0m');
+    term.writeln('');
+    term.writeln('  \x1b[90mType \x1b[36mhelp\x1b[90m for commands · \x1b[36m↑↓\x1b[90m history · \x1b[36mTab\x1b[90m complete\x1b[0m');
     term.write('\r\n\x1b[36m❯\x1b[0m ');
 
     term.onData((data) => {
       if (runningRef.current) return;
+
+      // Helper to clear and rewrite the current line
+      const rewriteLine = (newCmd: string) => {
+        // Clear current input from display
+        const oldLen = cmdBufRef.current.length;
+        term.write('\b'.repeat(oldLen) + ' '.repeat(oldLen) + '\b'.repeat(oldLen));
+        cmdBufRef.current = newCmd;
+        term.write(newCmd);
+      };
+
+      // Enter — execute command
       if (data === '\r') {
         const cmd = cmdBufRef.current;
         cmdBufRef.current = '';
+        // Add to history (skip empty and duplicates)
+        if (cmd.trim() && historyRef.current[historyRef.current.length - 1] !== cmd.trim()) {
+          historyRef.current.push(cmd.trim());
+        }
+        historyIdxRef.current = -1;
         handleCommandRef.current(cmd);
-      } else if (data === '\x7f') {
+        return;
+      }
+
+      // Backspace
+      if (data === '\x7f') {
         if (cmdBufRef.current.length > 0) {
           cmdBufRef.current = cmdBufRef.current.slice(0, -1);
           term.write('\b \b');
         }
-      } else if (data === '\x03') {
+        return;
+      }
+
+      // Ctrl+C — cancel
+      if (data === '\x03') {
         cmdBufRef.current = '';
+        historyIdxRef.current = -1;
         term.write('^C');
         term.write('\r\n\x1b[36m❯\x1b[0m ');
-      } else if (data >= ' ') {
+        return;
+      }
+
+      // Ctrl+U — clear line
+      if (data === '\x15') {
+        rewriteLine('');
+        return;
+      }
+
+      // Arrow keys (escape sequences)
+      if (data === '\x1b[A') {
+        // Up arrow — previous history
+        const history = historyRef.current;
+        if (history.length === 0) return;
+        if (historyIdxRef.current === -1) {
+          savedCmdRef.current = cmdBufRef.current;
+          historyIdxRef.current = history.length - 1;
+        } else if (historyIdxRef.current > 0) {
+          historyIdxRef.current--;
+        }
+        rewriteLine(history[historyIdxRef.current]);
+        return;
+      }
+
+      if (data === '\x1b[B') {
+        // Down arrow — next history
+        const history = historyRef.current;
+        if (historyIdxRef.current === -1) return;
+        if (historyIdxRef.current < history.length - 1) {
+          historyIdxRef.current++;
+          rewriteLine(history[historyIdxRef.current]);
+        } else {
+          historyIdxRef.current = -1;
+          rewriteLine(savedCmdRef.current);
+        }
+        return;
+      }
+
+      // Tab — auto-complete
+      if (data === '\t') {
+        const input = cmdBufRef.current;
+        const parts = input.split(/\s+/);
+
+        const COMMANDS = [
+          'ls', 'cat', 'tree', 'touch', 'mkdir', 'rm', 'cp', 'mv', 'echo', 'pwd', 'clear',
+          'head', 'tail', 'wc', 'grep', 'history', 'date', 'whoami', 'which',
+          'python', 'python3', 'exec', 'pip', 'uv', 'flask', 'server',
+          'git', 'bazel', 'help',
+        ];
+
+        if (parts.length <= 1) {
+          // Complete command name
+          const prefix = parts[0] || '';
+          const matches = COMMANDS.filter(c => c.startsWith(prefix));
+          if (matches.length === 1) {
+            rewriteLine(matches[0] + ' ');
+          } else if (matches.length > 1) {
+            term.write(`\r\n\x1b[90m${matches.join('  ')}\x1b[0m`);
+            term.write('\r\n\x1b[36m❯\x1b[0m ' + input);
+          }
+        } else {
+          // Complete filename
+          const partial = parts[parts.length - 1];
+          const allFiles = Object.keys(vfs.getAllFiles());
+          const matches = allFiles.filter(f => f.startsWith(partial));
+          if (matches.length === 1) {
+            parts[parts.length - 1] = matches[0];
+            rewriteLine(parts.join(' '));
+          } else if (matches.length > 1) {
+            // Find common prefix
+            let common = matches[0];
+            for (const m of matches) {
+              while (!m.startsWith(common)) {
+                common = common.slice(0, -1);
+              }
+            }
+            if (common.length > partial.length) {
+              parts[parts.length - 1] = common;
+              rewriteLine(parts.join(' '));
+            } else {
+              term.write(`\r\n\x1b[90m${matches.join('  ')}\x1b[0m`);
+              term.write('\r\n\x1b[36m❯\x1b[0m ' + input);
+            }
+          }
+        }
+        return;
+      }
+
+      // Regular printable characters
+      if (data >= ' ') {
         cmdBufRef.current += data;
         term.write(data);
       }
