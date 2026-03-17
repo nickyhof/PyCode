@@ -69,7 +69,7 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
 // ─── Overlay ────────────────────────────────────────────
 
 function CommandPaletteOverlay({ onClose, initialQuery = '' }: { onClose: () => void; initialQuery?: string }) {
-  const { state, dispatch, vfs } = useApp();
+  const { state, dispatch, vfs, openFolder, loadSampleProject, saveToLocal } = useApp();
   const [query, setQuery] = useState(initialQuery);
   const inputRef = useRef<HTMLInputElement>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -94,6 +94,24 @@ function CommandPaletteOverlay({ onClose, initialQuery = '' }: { onClose: () => 
 
   // ── Build command list ──
   const commands: PaletteCommand[] = [
+    {
+      id: 'open-folder',
+      label: 'Open Local Folder',
+      icon: 'codicon-folder-opened',
+      action: () => openFolder(),
+    },
+    {
+      id: 'load-sample',
+      label: 'Load Sample Project',
+      icon: 'codicon-rocket',
+      action: () => loadSampleProject(),
+    },
+    {
+      id: 'save-all-to-disk',
+      label: 'Save All to Disk',
+      icon: 'codicon-save-all',
+      action: () => saveToLocal(),
+    },
     {
       id: 'toggle-terminal',
       label: 'Toggle Terminal',

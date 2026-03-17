@@ -1,4 +1,5 @@
 import { WorkspacePicker } from './WorkspacePicker';
+import { useApp } from '../../context/AppContext';
 
 interface TitleBarProps {
   filename: string;
@@ -8,6 +9,8 @@ interface TitleBarProps {
 }
 
 export function TitleBar({ filename, onToggleTerminal, onToggleCopilot, onOpenPalette }: TitleBarProps) {
+  const { state } = useApp();
+
   return (
     <header id="titlebar">
       <div className="titlebar-left">
@@ -15,7 +18,14 @@ export function TitleBar({ filename, onToggleTerminal, onToggleCopilot, onOpenPa
         <span className="app-title">PyCode</span>
       </div>
       <div className="titlebar-center">
-        <WorkspacePicker />
+        {state.localDirName ? (
+          <span className="titlebar-local-dir" title={`Local folder: ${state.localDirName}`}>
+            <span className="codicon codicon-folder-opened" style={{ marginRight: 4 }} />
+            {state.localDirName}
+          </span>
+        ) : (
+          <WorkspacePicker />
+        )}
         <span className="titlebar-sep">—</span>
         <span id="titlebar-filename">{filename}</span>
       </div>

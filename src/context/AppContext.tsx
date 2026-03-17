@@ -6,6 +6,7 @@
 import { createContext, useContext, useReducer, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { VirtualFileSystem } from '../services/vfs';
 import { initPyodideWorker, postToWorker } from '../services/pyodide';
+import { openLocalFolder as openLocalFolderService, saveFileToLocal, saveAllToLocal } from '../services/localFs';
 import type { Tab, SidebarPanel, AppSettings } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
 
@@ -33,6 +34,8 @@ interface AppState {
   cursorLine: number;
   cursorCol: number;
   diffView: DiffView | null;
+  localDirHandle: FileSystemDirectoryHandle | null;
+  localDirName: string | null;
 }
 
 const initialState: AppState = {
@@ -51,6 +54,8 @@ const initialState: AppState = {
   cursorLine: 1,
   cursorCol: 1,
   diffView: null,
+  localDirHandle: null,
+  localDirName: null,
 };
 
 // ─── Actions ────────────────────────────────────────────
@@ -73,7 +78,9 @@ type Action =
   | { type: 'VFS_CHANGED' }
   | { type: 'SET_CURSOR'; line: number; col: number }
   | { type: 'OPEN_DIFF'; filepath: string; oldContent: string; newContent: string }
-  | { type: 'CLOSE_DIFF' };
+  | { type: 'CLOSE_DIFF' }
+  | { type: 'SET_LOCAL_DIR'; handle: FileSystemDirectoryHandle; name: string }
+  | { type: 'CLEAR_LOCAL_DIR' };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -145,6 +152,10 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, diffView: { filepath: action.filepath, oldContent: action.oldContent, newContent: action.newContent } };
     case 'CLOSE_DIFF':
       return { ...state, diffView: null };
+    case 'SET_LOCAL_DIR':
+      return { ...state, localDirHandle: action.handle, localDirName: action.name };
+    case 'CLEAR_LOCAL_DIR':
+      return { ...state, localDirHandle: null, localDirName: null };
     default:
       return state;
   }
@@ -179,6 +190,10 @@ interface AppContextValue {
   dispatch: React.Dispatch<Action>;
   vfs: VirtualFileSystem;
   addWorkerListener: (listener: WorkerOutputListener) => () => void;
+  openFolder: () => Promise<void>;
+  loadSampleProject: () => Promise<void>;
+  saveToLocal: () => Promise<number>;
+  saveFileToLocalDisk: (path: string, content: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -187,24 +202,71 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const vfsRef = useRef(new VirtualFileSystem());
   const listenersRef = useRef<Set<WorkerOutputListener>>(new Set());
+  const localDirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
 
   const addWorkerListener = useCallback((listener: WorkerOutputListener) => {
     listenersRef.current.add(listener);
     return () => { listenersRef.current.delete(listener); };
   }, []);
 
-  // Initialize VFS, Git, and Pyodide on mount
-  useEffect(() => {
-    // Load default project files, then init git with initial commit
-    (async () => {
-      await vfsRef.current.init();
+  // Helper to load sample project from /default-project/
+  const loadSampleProject = useCallback(async () => {
+    // Close all tabs and clear local dir
+    vfsRef.current.clear();
+    localDirHandleRef.current = null;
+    dispatch({ type: 'CLEAR_LOCAL_DIR' });
+
+    await vfsRef.current.init();
+    dispatch({ type: 'VFS_CHANGED' });
+
+    // Re-init git
+    const { initGit } = await import('../services/git');
+    await initGit(() => vfsRef.current.getAllFiles(), undefined, true);
+  }, []);
+
+  // Helper to open a local folder
+  const openFolder = useCallback(async () => {
+    try {
+      const result = await openLocalFolderService();
+      localDirHandleRef.current = result.dirHandle;
+
+      // Clear VFS and load local files
+      vfsRef.current.clear();
+      for (const [path, content] of Object.entries(result.files)) {
+        vfsRef.current.set(path, content);
+      }
+
+      dispatch({ type: 'SET_LOCAL_DIR', handle: result.dirHandle, name: result.dirName });
       dispatch({ type: 'VFS_CHANGED' });
 
-      // Init git — this creates the initial commit so files don't show as changes
+      // Re-init git with new files
       const { initGit } = await import('../services/git');
       await initGit(() => vfsRef.current.getAllFiles(), undefined, true);
-    })();
+    } catch (err) {
+      // User cancelled the picker — do nothing
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      console.error('Failed to open local folder:', err);
+    }
+  }, []);
 
+  // Helper to save all VFS files to local disk
+  const saveToLocal = useCallback(async () => {
+    if (!localDirHandleRef.current) return 0;
+    return saveAllToLocal(localDirHandleRef.current, vfsRef.current.getAllFiles());
+  }, []);
+
+  // Helper to save a single file to local disk
+  const saveFileToLocalDisk = useCallback(async (path: string, content: string) => {
+    if (!localDirHandleRef.current) return;
+    try {
+      await saveFileToLocal(localDirHandleRef.current, path, content);
+    } catch (err) {
+      console.error('Failed to save file to local disk:', err);
+    }
+  }, []);
+
+  // Initialize Pyodide on mount (VFS stays empty until user picks a project)
+  useEffect(() => {
     // Start the Pyodide web worker (independent of VFS/Git)
     initPyodideWorker((type, data, fullMsg) => {
       if (type === 'ready') {
@@ -223,6 +285,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch,
     vfs: vfsRef.current,
     addWorkerListener,
+    openFolder,
+    loadSampleProject,
+    saveToLocal,
+    saveFileToLocalDisk,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

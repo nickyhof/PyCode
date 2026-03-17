@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect } from 'react';
 import { Editor, DiffEditor, loader } from '@monaco-editor/react';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { useApp } from '../../context/AppContext';
+import { useNotification } from '../Notification/Notification';
 import { syncFilesToWorker, runPythonFile, emitToTerminal, runPythonCode } from '../../services/pyodide';
 import { NotebookEditor } from './NotebookEditor';
 
@@ -221,9 +222,11 @@ function getFileIcon(path: string): string {
 }
 
 export function EditorArea() {
-  const { state, dispatch, vfs } = useApp();
+  const { state, dispatch, vfs, openFolder, loadSampleProject, saveFileToLocalDisk } = useApp();
+  const { notify } = useNotification();
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const activeTabRef = useRef<string | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeFile = state.activeTab;
   activeTabRef.current = activeFile;
@@ -257,8 +260,19 @@ export function EditorArea() {
       vfs.set(activeFile, value);
       dispatch({ type: 'MARK_DIRTY', path: activeFile, dirty: true });
       dispatch({ type: 'VFS_CHANGED' });
+
+      // Debounced auto-save to local disk
+      if (state.localDirHandle) {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        const pathToSave = activeFile;
+        const contentToSave = value;
+        saveTimerRef.current = setTimeout(() => {
+          saveFileToLocalDisk(pathToSave, contentToSave);
+          dispatch({ type: 'MARK_DIRTY', path: pathToSave, dirty: false });
+        }, 500);
+      }
     }
-  }, [activeFile, vfs, dispatch]);
+  }, [activeFile, vfs, dispatch, state.localDirHandle, saveFileToLocalDisk]);
 
   return (
     <div id="editor-area">
@@ -299,6 +313,30 @@ export function EditorArea() {
             </div>
             <h1>PyCode</h1>
             <p className="welcome-subtitle">Browser-based Python IDE</p>
+            <div className="welcome-actions">
+              <button
+                className="welcome-btn welcome-btn-primary"
+                onClick={async () => {
+                  try {
+                    await openFolder();
+                    notify('Local folder opened', 'success');
+                  } catch { /* cancelled */ }
+                }}
+              >
+                <span className="codicon codicon-folder-opened" />
+                Open Folder
+              </button>
+              <button
+                className="welcome-btn welcome-btn-secondary"
+                onClick={async () => {
+                  await loadSampleProject();
+                  notify('Sample project loaded', 'success');
+                }}
+              >
+                <span className="codicon codicon-rocket" />
+                Quick Start
+              </button>
+            </div>
             <div className="welcome-shortcuts">
               <div className="shortcut"><kbd>Ctrl+N</kbd> New File</div>
               <div className="shortcut"><kbd>Ctrl+J</kbd> New Notebook</div>

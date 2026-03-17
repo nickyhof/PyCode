@@ -18,10 +18,11 @@ interface SearchResult {
 }
 
 export function Sidebar({ activePanel }: SidebarProps) {
-  const { dispatch, vfs } = useApp();
+  const { state, dispatch, vfs, openFolder } = useApp();
   const { prompt } = useDialog();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const hasProject = state.vfsVersion > 0;
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
@@ -55,7 +56,10 @@ export function Sidebar({ activePanel }: SidebarProps) {
         <div className="sidebar-header">
           <span className="sidebar-title">EXPLORER</span>
           <div className="sidebar-actions">
-            <button className="icon-btn" title="New File" onClick={async () => {
+            <button className="icon-btn" title="Open Local Folder" onClick={() => openFolder()}>
+              <span className="codicon codicon-folder-opened" />
+            </button>
+            <button className="icon-btn" title="New File" disabled={!hasProject} onClick={async () => {
               const name = await prompt({ title: 'New File', defaultValue: 'untitled.py', placeholder: 'Enter file name...' });
               if (!name) return;
               vfs.set(name, '');
@@ -64,7 +68,7 @@ export function Sidebar({ activePanel }: SidebarProps) {
             }}>
               <span className="codicon codicon-new-file" />
             </button>
-            <button className="icon-btn" title="New Notebook" onClick={async () => {
+            <button className="icon-btn" title="New Notebook" disabled={!hasProject} onClick={async () => {
               const name = await prompt({ title: 'New Notebook', defaultValue: 'untitled.ipynb', placeholder: 'Enter notebook name...' });
               if (!name) return;
               const nbName = name.endsWith('.ipynb') ? name : name + '.ipynb';
@@ -79,7 +83,7 @@ export function Sidebar({ activePanel }: SidebarProps) {
             }}>
               <span className="codicon codicon-notebook" />
             </button>
-            <button className="icon-btn" title="New Folder" onClick={async () => {
+            <button className="icon-btn" title="New Folder" disabled={!hasProject} onClick={async () => {
               const name = await prompt({ title: 'New Folder', defaultValue: 'new-folder', placeholder: 'Enter folder name...' });
               if (!name) return;
               vfs.set(name + '/.keep', '');

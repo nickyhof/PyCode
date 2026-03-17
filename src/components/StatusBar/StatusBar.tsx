@@ -15,6 +15,12 @@ export function StatusBar() {
   return (
     <footer id="statusbar">
       <div className="status-left">
+        {state.localDirName && (
+          <span className="status-item status-local-folder" title={`Local folder: ${state.localDirName}`}>
+            <span className="codicon codicon-folder-opened" />
+            <span>{state.localDirName}</span>
+          </span>
+        )}
         <span className="status-item" id="status-branch">
           <span className="codicon codicon-source-control" />
           <span id="status-branch-name">master</span>
