@@ -4,6 +4,7 @@ import type { editor as MonacoEditor } from 'monaco-editor';
 import { useApp } from '../../context/AppContext';
 import { useNotification } from '../Notification/Notification';
 import { syncFilesToWorker, runPythonFile, emitToTerminal, runPythonCode } from '../../services/pyodide';
+import { encodeShareUrl } from '../../services/shareUrl';
 import { NotebookEditor } from './NotebookEditor';
 
 // Configure Monaco to use our bundled version
@@ -302,6 +303,29 @@ export function EditorArea() {
             </div>
           ))}
         </div>
+        {state.activeTab && (
+          <div className="tab-bar-actions">
+            <button
+              className="icon-btn share-btn"
+              title="Share this file"
+              onClick={async () => {
+                const path = state.activeTab;
+                if (!path) return;
+                const entry = vfs.get(path);
+                if (!entry || entry.type !== 'file') return;
+                try {
+                  const url = await encodeShareUrl(path, entry.content || '');
+                  await navigator.clipboard.writeText(url);
+                  notify('Link copied to clipboard!', 'success');
+                } catch {
+                  notify('Failed to generate share link', 'error');
+                }
+              }}
+            >
+              <span className="codicon codicon-link" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Welcome View */}

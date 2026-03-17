@@ -278,6 +278,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     });
     postToWorker('init');
+
+    // Check for shared code in the URL hash
+    (async () => {
+      const { decodeShareUrl, clearShareHash } = await import('../services/shareUrl');
+      const shared = await decodeShareUrl();
+      if (shared) {
+        vfsRef.current.set(shared.filename, shared.code);
+        dispatch({ type: 'VFS_CHANGED' });
+        dispatch({ type: 'OPEN_FILE', path: shared.filename });
+        clearShareHash();
+      }
+    })();
   }, []);
 
   const value: AppContextValue = {

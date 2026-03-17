@@ -6,6 +6,8 @@
 import { useState, useEffect, useRef, useCallback, createContext, useContext, type ReactNode } from 'react';
 import { useApp } from '../../context/AppContext';
 import { syncFilesToWorker, runPythonFile } from '../../services/pyodide';
+import { encodeShareUrl } from '../../services/shareUrl';
+import { useNotification } from '../Notification/Notification';
 
 // ─── Context for opening the palette from anywhere ──────
 
@@ -70,6 +72,7 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
 
 function CommandPaletteOverlay({ onClose, initialQuery = '' }: { onClose: () => void; initialQuery?: string }) {
   const { state, dispatch, vfs, openFolder, loadSampleProject, saveToLocal } = useApp();
+  const { notify } = useNotification();
   const [query, setQuery] = useState(initialQuery);
   const inputRef = useRef<HTMLInputElement>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -184,6 +187,24 @@ function CommandPaletteOverlay({ onClose, initialQuery = '' }: { onClose: () => 
       icon: 'codicon-close',
       shortcut: 'Ctrl+W',
       action: () => { if (state.activeTab) dispatch({ type: 'CLOSE_TAB', path: state.activeTab }); },
+    },
+    {
+      id: 'share-file',
+      label: 'Share Current File',
+      icon: 'codicon-link',
+      action: async () => {
+        const path = state.activeTab;
+        if (!path) return;
+        const entry = vfs.get(path);
+        if (!entry || entry.type !== 'file') return;
+        try {
+          const url = await encodeShareUrl(path, entry.content || '');
+          await navigator.clipboard.writeText(url);
+          notify('Share link copied to clipboard!', 'success');
+        } catch {
+          notify('Failed to generate share link', 'error');
+        }
+      },
     },
     {
       id: 'close-diff',
