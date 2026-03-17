@@ -3,9 +3,8 @@
  * Not a full TOML spec implementation.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-interface TOMLArray extends Array<TOMLValue> {}
-type TOMLValue = string | number | boolean | TOMLArray | Record<string, TOMLValue>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TOMLValue = string | number | boolean | any[] | { [key: string]: any };
 
 export function parseTOML(text: string): Record<string, TOMLValue> {
   const result: Record<string, TOMLValue> = {};

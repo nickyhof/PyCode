@@ -212,8 +212,10 @@ export function CopilotPanel({ onClose }: CopilotPanelProps) {
       <div className="copilot-messages">
         {messages.length === 0 && !streaming && (
           <div className="copilot-welcome">
-            <span className="codicon codicon-copilot copilot-welcome-icon" />
-            How can I help you?<br />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center' }}>
+              <span className="codicon codicon-copilot copilot-welcome-icon" />
+              <span>How can I help you?</span>
+            </div>
             <span className="copilot-welcome-hint">Ask about your code, or switch to <strong>Agent</strong> mode to edit files.</span>
           </div>
         )}

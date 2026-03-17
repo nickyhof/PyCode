@@ -1842,13 +1842,12 @@ kbd {
   text-align: center;
   padding: 40px 20px;
   color: var(--fg-secondary);
+  margin: auto;
 }
 
 .copilot-welcome-icon {
-  font-size: 48px;
-  opacity: 0.3;
-  display: block;
-  margin-bottom: 16px;
+  font-size: 32px;
+  opacity: 0.4;
 }
 
 .copilot-welcome p {
