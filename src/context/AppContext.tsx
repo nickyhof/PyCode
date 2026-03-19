@@ -19,6 +19,8 @@ interface DiffView {
   newContent: string;
 }
 
+type ThemeMode = 'dark' | 'light';
+
 interface AppState {
   tabs: Tab[];
   activeTab: string | null;
@@ -37,6 +39,16 @@ interface AppState {
   diffView: DiffView | null;
   localDirHandle: FileSystemDirectoryHandle | null;
   localDirName: string | null;
+  theme: ThemeMode;
+  githubUsername: string | null;
+}
+
+function loadTheme(): ThemeMode {
+  try {
+    const stored = localStorage.getItem('pycode-theme');
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch { /* ignore */ }
+  return 'dark';
 }
 
 const initialState: AppState = {
@@ -57,6 +69,8 @@ const initialState: AppState = {
   diffView: null,
   localDirHandle: null,
   localDirName: null,
+  theme: loadTheme(),
+  githubUsername: null,
 };
 
 // ─── Actions ────────────────────────────────────────────
@@ -82,7 +96,9 @@ type Action =
   | { type: 'CLOSE_DIFF' }
   | { type: 'SET_LOCAL_DIR'; handle: FileSystemDirectoryHandle; name: string }
   | { type: 'CLEAR_LOCAL_DIR' }
-  | { type: 'REORDER_TABS'; fromIndex: number; toIndex: number };
+  | { type: 'REORDER_TABS'; fromIndex: number; toIndex: number }
+  | { type: 'SET_THEME'; theme: ThemeMode }
+  | { type: 'SET_GITHUB_USERNAME'; username: string | null };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -164,6 +180,13 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, localDirHandle: action.handle, localDirName: action.name };
     case 'CLEAR_LOCAL_DIR':
       return { ...state, localDirHandle: null, localDirName: null };
+    case 'SET_THEME': {
+      localStorage.setItem('pycode-theme', action.theme);
+      document.documentElement.setAttribute('data-theme', action.theme);
+      return { ...state, theme: action.theme };
+    }
+    case 'SET_GITHUB_USERNAME':
+      return { ...state, githubUsername: action.username };
     default:
       return state;
   }
@@ -272,6 +295,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error('Failed to save file to local disk:', err);
     }
   }, []);
+
+  // Apply saved theme on mount
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', state.theme);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch GitHub username when PAT changes
+  useEffect(() => {
+    const pat = state.settings.githubPat;
+    if (!pat) {
+      dispatch({ type: 'SET_GITHUB_USERNAME', username: null });
+      return;
+    }
+    let cancelled = false;
+    fetch('https://api.github.com/user', {
+      headers: { Authorization: `token ${pat}` },
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data) => {
+        if (!cancelled && data.login) {
+          dispatch({ type: 'SET_GITHUB_USERNAME', username: data.login });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) dispatch({ type: 'SET_GITHUB_USERNAME', username: null });
+      });
+    return () => { cancelled = true; };
+  }, [state.settings.githubPat, dispatch]);
 
   // Initialize Pyodide on mount (VFS stays empty until user picks a project)
   useEffect(() => {

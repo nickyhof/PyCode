@@ -9,7 +9,7 @@ interface TitleBarProps {
 }
 
 export function TitleBar({ filename, onToggleTerminal, onToggleCopilot, onOpenPalette }: TitleBarProps) {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
 
   return (
     <header id="titlebar">
@@ -31,7 +31,14 @@ export function TitleBar({ filename, onToggleTerminal, onToggleCopilot, onOpenPa
       </div>
       <div className="titlebar-right">
         <button className="titlebar-btn" title="Command Palette (Ctrl+P)" onClick={onOpenPalette}>
-          <span className="codicon codicon-search" />
+          <span className="codicon codicon-symbol-keyword" />
+        </button>
+        <button
+          className="titlebar-btn theme-toggle-btn"
+          title={state.theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          onClick={() => dispatch({ type: 'SET_THEME', theme: state.theme === 'dark' ? 'light' : 'dark' })}
+        >
+          <span className="codicon codicon-color-mode" />
         </button>
         <button className="titlebar-btn" title="Toggle Terminal" onClick={onToggleTerminal}>
           <span className="codicon codicon-terminal" />

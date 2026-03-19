@@ -1087,11 +1087,11 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
 
     const term = new Terminal({
       theme: {
-        background: '#1e1e1e',
-        foreground: '#cccccc',
-        cursor: '#ffffff',
-        cursorAccent: '#1e1e1e',
-        selectionBackground: '#264f78',
+        background: '#111116',
+        foreground: '#d1d5db',
+        cursor: '#a78bfa',
+        cursorAccent: '#111116',
+        selectionBackground: '#3b2d6b',
       },
       fontFamily: "'JetBrains Mono', 'Cascadia Code', monospace",
       fontSize: 13,
@@ -1290,6 +1290,45 @@ export function TerminalPanel({ collapsed, onToggle }: TerminalPanelProps) {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sync terminal theme when theme mode changes
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    if (state.theme === 'light') {
+      term.options.theme = {
+        background: '#f8f8fa',
+        foreground: '#1e1e2e',
+        cursor: '#7c3aed',
+        cursorAccent: '#f8f8fa',
+        selectionBackground: '#c4b5fd66',
+        black: '#1e1e2e',
+        red: '#dc2626',
+        green: '#059669',
+        yellow: '#d97706',
+        blue: '#2563eb',
+        magenta: '#7c3aed',
+        cyan: '#0891b2',
+        white: '#4a4a5a',
+        brightBlack: '#6b7280',
+        brightRed: '#ef4444',
+        brightGreen: '#10b981',
+        brightYellow: '#f59e0b',
+        brightBlue: '#3b82f6',
+        brightMagenta: '#8b5cf6',
+        brightCyan: '#06b6d4',
+        brightWhite: '#1e1e2e',
+      };
+    } else {
+      term.options.theme = {
+        background: '#111116',
+        foreground: '#d1d5db',
+        cursor: '#a78bfa',
+        cursorAccent: '#111116',
+        selectionBackground: '#3b2d6b',
+      };
+    }
+  }, [state.theme]);
 
   useEffect(() => {
     if (!collapsed && fitRef.current) {

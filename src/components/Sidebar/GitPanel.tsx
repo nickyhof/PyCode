@@ -50,7 +50,7 @@ export function GitPanel() {
   const [staged, setStaged] = useState<GitStatusEntry[]>([]);
   const [changes, setChanges] = useState<GitStatusEntry[]>([]);
   const [log, setLog] = useState<GitLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
   const [sectionsOpen, setSectionsOpen] = useState({ staged: true, changes: true, log: true });
@@ -78,22 +78,29 @@ export function GitPanel() {
     }
   }, [vfs, dispatch]);
 
+  const gitInitialized = useRef(false);
+
   useEffect(() => {
+    // Don't init git until a project is actually loaded
+    const files = vfs.getAllFiles();
+    if (Object.keys(files).length === 0 || gitInitialized.current) return;
+    gitInitialized.current = true;
     (async () => {
       setLoading(true);
-      await initGit(() => vfs.getAllFiles());
+      const isDefaultProject = !state.localDirHandle;
+      await initGit(() => vfs.getAllFiles(), undefined, isDefaultProject);
       const url = await gitGetRemoteUrl();
       setRemoteUrl(url);
       await refresh();
       setLoading(false);
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [state.vfsVersion]);
 
   // Auto-refresh when VFS changes (debounced)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (loading) return;
+    if (loading || !gitInitialized.current) return;
     if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
     refreshTimerRef.current = setTimeout(() => {
       refresh();

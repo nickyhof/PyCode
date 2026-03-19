@@ -18,11 +18,58 @@ monaco.editor.defineTheme('pycode-dark', {
   inherit: true,
   rules: [],
   colors: {
-    'editor.background': '#1e1e1e',
-    'editor.foreground': '#d4d4d4',
-    'editorCursor.foreground': '#569cd6',
-    'editor.lineHighlightBackground': '#2a2d2e',
-    'editor.selectionBackground': '#264f78',
+    'editor.background': '#151519',
+    'editor.foreground': '#d1d5db',
+    'editorCursor.foreground': '#a78bfa',
+    'editor.lineHighlightBackground': '#1e1e28',
+    'editor.selectionBackground': '#3b2d6b',
+    'editorLineNumber.foreground': '#4b4b5e',
+    'editorLineNumber.activeForeground': '#a78bfa',
+    'editorIndentGuide.background': '#1e1e28',
+    'editorIndentGuide.activeBackground': '#2e2e3e',
+    'editorBracketMatch.background': '#3b2d6b44',
+    'editorBracketMatch.border': '#8b5cf6',
+    'editorWidget.background': '#111116',
+    'editorWidget.border': '#8b5cf622',
+    'editorSuggestWidget.background': '#111116',
+    'editorSuggestWidget.border': '#8b5cf622',
+    'editorSuggestWidget.selectedBackground': '#8b5cf620',
+    'editorHoverWidget.background': '#111116',
+    'editorHoverWidget.border': '#8b5cf622',
+    'scrollbar.shadow': '#00000000',
+    'scrollbarSlider.background': '#8b5cf622',
+    'scrollbarSlider.hoverBackground': '#8b5cf644',
+    'scrollbarSlider.activeBackground': '#8b5cf666',
+  },
+});
+
+monaco.editor.defineTheme('pycode-light', {
+  base: 'vs',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#ffffff',
+    'editor.foreground': '#1e1e2e',
+    'editorCursor.foreground': '#7c3aed',
+    'editor.lineHighlightBackground': '#f5f5fa',
+    'editor.selectionBackground': '#c4b5fd44',
+    'editorLineNumber.foreground': '#b0b0c0',
+    'editorLineNumber.activeForeground': '#7c3aed',
+    'editorIndentGuide.background': '#e8e8f0',
+    'editorIndentGuide.activeBackground': '#d0d0e0',
+    'editorBracketMatch.background': '#c4b5fd33',
+    'editorBracketMatch.border': '#7c3aed',
+    'editorWidget.background': '#f8f8fa',
+    'editorWidget.border': '#e0e0ea',
+    'editorSuggestWidget.background': '#f8f8fa',
+    'editorSuggestWidget.border': '#e0e0ea',
+    'editorSuggestWidget.selectedBackground': '#ececf4',
+    'editorHoverWidget.background': '#f8f8fa',
+    'editorHoverWidget.border': '#e0e0ea',
+    'scrollbar.shadow': '#00000000',
+    'scrollbarSlider.background': '#7c3aed22',
+    'scrollbarSlider.hoverBackground': '#7c3aed44',
+    'scrollbarSlider.activeBackground': '#7c3aed66',
   },
 });
 
@@ -538,7 +585,7 @@ export function EditorArea() {
             language={getLanguage(state.diffView.filepath)}
             original={state.diffView.oldContent}
             modified={state.diffView.newContent}
-            theme="pycode-dark"
+            theme={state.theme === 'dark' ? 'pycode-dark' : 'pycode-light'}
             options={{
               readOnly: true,
               renderSideBySide: true,
@@ -568,7 +615,7 @@ export function EditorArea() {
             path={activeFile || undefined}
             language={language}
             value={content}
-            theme="pycode-dark"
+            theme={state.theme === 'dark' ? 'pycode-dark' : 'pycode-light'}
             onMount={handleEditorMount}
             onChange={handleEditorChange}
             options={{

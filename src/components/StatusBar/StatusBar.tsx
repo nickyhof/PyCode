@@ -25,6 +25,12 @@ export function StatusBar() {
           <span className="codicon codicon-source-control" />
           <span id="status-branch-name">master</span>
         </span>
+        {state.settings.githubPat && (
+          <span className="status-item status-github" title="Signed in to GitHub">
+            <span className="codicon codicon-github" />
+            <span>{state.githubUsername || 'GitHub'}</span>
+          </span>
+        )}
       </div>
       <div className="status-right">
         <span className={`status-item ${state.pyodideReady ? 'ready' : 'loading'}`} id="status-pyodide">

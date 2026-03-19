@@ -51,6 +51,20 @@ monaco.editor.defineTheme('pycode-notebook', {
   },
 });
 
+monaco.editor.defineTheme('pycode-notebook-light', {
+  base: 'vs',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#f5f5f8',
+    'editor.foreground': '#1e1e2e',
+    'editorCursor.foreground': '#7c3aed',
+    'editor.lineHighlightBackground': '#ededf2',
+    'editor.selectionBackground': '#c4b5fd44',
+    'editorLineNumber.foreground': '#b0b0c0',
+  },
+});
+
 // ─── Helpers ─────────────────────────────────────────────
 
 let cellCounter = 0;
@@ -625,7 +639,7 @@ export function NotebookEditor({ filePath }: NotebookEditorProps) {
                       )}
                       language="python"
                       value={cell.source}
-                      theme="pycode-notebook"
+                      theme={state.theme === 'dark' ? 'pycode-notebook' : 'pycode-notebook-light'}
                       onChange={(v) => updateCellSource(cell.id, v || '')}
                       options={{
                         fontFamily:
@@ -732,7 +746,7 @@ export function NotebookEditor({ filePath }: NotebookEditorProps) {
                         )}
                         language="markdown"
                         value={cell.source}
-                        theme="pycode-notebook"
+                        theme={state.theme === 'dark' ? 'pycode-notebook' : 'pycode-notebook-light'}
                         onChange={(v) => updateCellSource(cell.id, v || '')}
                         options={{
                           fontFamily:
