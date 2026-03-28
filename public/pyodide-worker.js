@@ -416,6 +416,24 @@ os.chdir('${parentDir}')
 
         // Read and execute the Flask app file to define the app
         const code = pyodide.FS.readFile('/' + filename, { encoding: 'utf8' });
+
+        // Auto-install the web framework if not already available
+        const needsFlask = (code.includes('from flask') || code.includes('import flask')) &&
+          !code.includes('from fastapi');
+        const needsFastAPI = code.includes('from fastapi') || code.includes('import fastapi');
+        try {
+          const micropip = pyodide.pyimport('micropip');
+          if (needsFastAPI) {
+            self.postMessage({ type: 'stdout', data: 'Installing fastapi...' });
+            await micropip.install('fastapi');
+          } else if (needsFlask) {
+            self.postMessage({ type: 'stdout', data: 'Installing flask...' });
+            await micropip.install('flask');
+          }
+        } catch (installErr) {
+          // Non-fatal — the import will fail with a clearer error if the package is truly missing
+        }
+
         await pyodide.runPythonAsync(code);
 
         // Install the WSGI/ASGI adapter
